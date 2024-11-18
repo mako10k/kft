@@ -1,3 +1,2 @@
 #!/usr/bin/env kft
-{{!ls}}
-{{!cat}}
+{{!ls -la}}

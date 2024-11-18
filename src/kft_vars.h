@@ -19,7 +19,6 @@ typedef const char *kft_var_value_t;
 typedef struct kft_var {
   kft_var_name_t name;
   kft_var_value_t value;
-  char _name[];
 } kft_var_t;
 
 kft_inline int kft_name_cmp(const kft_var_name_t a, const kft_var_name_t b) {
@@ -86,8 +85,9 @@ kft_inline int kft_var_export(kft_vars_t *const rootp, const char *const name,
     if (var == NULL) {
       return -1;
     }
-    strcpy(var->_name, name);
-    var->name = &var->_name[0];
+    char *const _name = (char *)&var[1];
+    strcpy(_name, name);
+    var->name = &_name[0];
     if (value != NULL) {
       const int err = kft_setenv(name, value, 1);
       if (err != 0) {
@@ -131,8 +131,9 @@ kft_inline int kft_var_set(kft_vars_t *const rootp, const char *const name,
     if (var == NULL) {
       return -1;
     }
-    strcpy(var->_name, name);
-    var->name = &var->_name[0];
+    char *const _name = (char *)&var[1];
+    strcpy(_name, name);
+    var->name = &_name[0];
 
     // Set variable
     const char *const value_new = strdup(value);
