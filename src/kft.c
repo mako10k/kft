@@ -41,7 +41,7 @@ struct kft_pump_context {
 
 static inline int kft_pump(const struct kft_pump_context ctx);
 
-static inline int ktf_printenv(const struct kft_pump_context ctx) {
+static inline int ktf_printvar(const struct kft_pump_context ctx) {
   char *name = NULL;
   size_t namelen = 0;
   FILE *const stream = open_memstream(&name, &namelen);
@@ -81,6 +81,7 @@ static inline void *kft_pump_run(void *data) {
   if (ret != KFT_SUCCESS) {
     return (void *)(intptr_t)KFT_FAILURE;
   }
+  fclose(ctx->ofp);
   return (void *)(intptr_t)KFT_SUCCESS;
 }
 
@@ -297,9 +298,17 @@ static inline int kft_pump(struct kft_pump_context ctx) {
           return KFT_SUCCESS;
         }
         switch (ch) {
-        case '$': { // PRINT ENV
-          int ret = ktf_printenv(ctx);
+        case '$': { // PRINT VAR
+          const int ret = ktf_printvar(ctx);
           if (ret != KFT_SUCCESS) {
+            return KFT_FAILURE;
+          }
+          continue;
+        }
+        case '!': { // EXECUTE IN DEFAULT SHELL
+          const char *const argv[] = {shell, NULL};
+          const int ret = kft_exec(ctx, shell, argv);
+          if (ret != 0) {
             return KFT_FAILURE;
           }
           continue;
@@ -308,9 +317,6 @@ static inline int kft_pump(struct kft_pump_context ctx) {
           ungetc(ch, ifp);
           break;
         }
-
-        const char *const argv[] = {shell, NULL};
-        kft_exec(ctx, shell, argv);
       }
 
       // flush pending delimiters
@@ -460,8 +466,10 @@ int main(int argc, char *argv[]) {
       printf("Options:\n");
       printf("  -e, --eval=STRING     evaluate STRING\n");
       printf("  -x, --export=NAME     variable NAME as current environment\n");
-      printf("  -x, --export=NAME=VAL variable NAME as environment variable set with VAL\n");
-      printf("  -x, --export=NAME=    variable NAME as environment variable but unset\n");
+      printf("  -x, --export=NAME=VAL variable NAME as environment variable "
+             "set with VAL\n");
+      printf("  -x, --export=NAME=    variable NAME as environment variable "
+             "but unset\n");
       printf("  -s, --shell=STRING    use shell STRING\n");
       printf("  -o, --output=FILE     write to FILE\n");
       printf("  -E, --escape=CHAR     escape character\n");
