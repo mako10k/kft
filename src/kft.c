@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -252,6 +253,7 @@ static inline int kft_pump(struct kft_pump_context ctx) {
 
   (void)vars;
 
+  size_t shebang_pos = 0;
   size_t esc_pos = 0;
   size_t delim_st_pos = 0;
   size_t delim_en_pos = 0;
@@ -262,6 +264,46 @@ static inline int kft_pump(struct kft_pump_context ctx) {
     if (ch == EOF) {
       return KFT_SUCCESS;
     }
+
+    // process shebang
+    if (shebang_pos == 0) {
+      if (ch == '#') {
+        struct stat st;
+        int fd = fileno(ifp);
+        if (fd >= 0) {
+          int ret = fstat(fd, &st);
+          if (ret == 0 && S_ISREG(st.st_mode)) {
+            long pos = ftell(ifp);
+            if (pos == 1) {
+              shebang_pos = 1;
+              continue;
+            }
+          }
+        }
+      }
+      shebang_pos = -1;
+    } else if (shebang_pos == 1) {
+      if (ch == '!') {
+        shebang_pos = 2;
+      } else {
+        int ret = fputc('#', ofp);
+        if (ret == EOF) {
+          return KFT_FAILURE;
+        }
+        ret = fputc(ch, ofp);
+        if (ret == EOF) {
+          return KFT_FAILURE;
+        }
+        shebang_pos = -1;
+      }
+      continue;
+    } else if (shebang_pos == 2) {
+      if (ch == '\n') {
+        shebang_pos = -1;
+      }
+      continue;
+    }
+
     // process escape character
     if (esc_pos) {
       const int ret = fputc(ch, ofp);

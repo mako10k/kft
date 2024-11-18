@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <search.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,6 +34,16 @@ kft_inline int kft_var_cmp_(const void *const a, const void *const b) {
   return kft_var_cmp(*(const kft_var_t *)a, *(const kft_var_t *)b);
 }
 
+kft_inline int kft_setenv(const char *name, const char *value, int replace) {
+  // fprintf(stderr, "setenv(%s, %s, %d)\n", name, value, replace);
+  return setenv(name, value, replace);
+}
+
+kft_inline int kft_unsetenv(const char *name) {
+  // fprintf(stderr, "unsetenv(%s)\n", name);
+  return unsetenv(name);
+}
+
 kft_inline const char *kft_var_get(const kft_vars_t *const rootp,
                                    const char *const name) {
   kft_var_t key = {.name = name, .value = NULL};
@@ -47,7 +58,7 @@ kft_inline int kft_var_unset(kft_vars_t *const rootp, const char *const name) {
   kft_var_t key = {.name = name, .value = NULL};
   void *varp_ = tdelete(&key, &rootp->root, kft_var_cmp_);
   if (varp_ == NULL) {
-    return unsetenv(name);
+    return kft_unsetenv(name);
   }
   kft_var_t **varp = (kft_var_t **)varp_;
   kft_var_t *var = *varp;
@@ -78,7 +89,7 @@ kft_inline int kft_var_export(kft_vars_t *const rootp, const char *const name,
     strcpy(var->_name, name);
     var->name = &var->_name[0];
     if (value != NULL) {
-      const int err = setenv(name, value, 1);
+      const int err = kft_setenv(name, value, 1);
       if (err != 0) {
         free(var);
         return -1;
@@ -91,7 +102,7 @@ kft_inline int kft_var_export(kft_vars_t *const rootp, const char *const name,
 
   // Existing variable
   if (value != NULL) {
-    int err = setenv(name, value, 1);
+    int err = kft_setenv(name, value, 1);
     if (err != 0) {
       return -1;
     }
@@ -135,6 +146,9 @@ kft_inline int kft_var_set(kft_vars_t *const rootp, const char *const name,
   }
 
   // Existing variable
+  if ((*varp)->value == NULL) {
+    return setenv(name, value, 1);
+  }
   // Set variable
   if ((*varp)->value != NULL && strcmp((*varp)->value, value) == 0) {
     // NO CHANGE
