@@ -1,2 +1,5 @@
 #!/usr/bin/env kft
-{{!ls -la}}
+SHELL ---
+{{! ls -la }}
+COMMENT ----
+{{- NESTED COMMENT {{! echo DO NOT PRINT THIS }} }}

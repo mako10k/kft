@@ -22,6 +22,7 @@ struct kft_pump_context {
   size_t delim_en_len;
   const char *shell;
   kft_vars_t *vars;
+  int is_comment;
 };
 
 #define KFT_SUCCESS 0
@@ -59,6 +60,7 @@ static inline int ktf_printvar(const struct kft_pump_context ctx) {
       .delim_en_len = ctx.delim_en_len,
       .shell = ctx.shell,
       .vars = ctx.vars,
+      .is_comment = 0,
   };
   const int ret = kft_pump(ctx_mem);
   if (ret != KFT_SUCCESS) {
@@ -170,6 +172,7 @@ static inline int kft_exec(const struct kft_pump_context ctx,
       .delim_en_len = ctx.delim_en_len,
       .shell = ctx.shell,
       .vars = ctx.vars,
+      .is_comment = 0,
   };
   pthread_t thread;
   const int ret =
@@ -250,6 +253,7 @@ static inline int kft_pump(struct kft_pump_context ctx) {
   const size_t delim_en_len = ctx.delim_en_len;
   const char *const shell = ctx.shell;
   kft_vars_t *const vars = ctx.vars;
+  int is_comment = ctx.is_comment;
 
   (void)vars;
 
@@ -335,6 +339,25 @@ static inline int kft_pump(struct kft_pump_context ctx) {
       delim_st_pos++;
       if (delim_st_pos == delim_st_len) {
         delim_st_pos = 0;
+        if (is_comment) {
+          struct kft_pump_context ctx_comment = {
+              .ifp = ifp,
+              .ofp = ofp,
+              .esc = esc,
+              .delim_st = delim_st,
+              .delim_st_len = delim_st_len,
+              .delim_en = delim_en,
+              .delim_en_len = delim_en_len,
+              .shell = shell,
+              .vars = vars,
+              .is_comment = 1,
+          };
+          const int ret = kft_pump(ctx_comment);
+          if (ret != KFT_SUCCESS) {
+            return KFT_FAILURE;
+          }
+          return KFT_SUCCESS;
+        }
         const int ch = fgetc(ifp);
         if (ch == EOF) {
           return KFT_SUCCESS;
@@ -354,6 +377,25 @@ static inline int kft_pump(struct kft_pump_context ctx) {
             return KFT_FAILURE;
           }
           continue;
+        }
+        case '-': { // COMMENT BLOCK
+          struct kft_pump_context ctx_comment = {
+              .ifp = ifp,
+              .ofp = ofp,
+              .esc = esc,
+              .delim_st = delim_st,
+              .delim_st_len = delim_st_len,
+              .delim_en = delim_en,
+              .delim_en_len = delim_en_len,
+              .shell = shell,
+              .vars = vars,
+              .is_comment = 1,
+          };
+          const int ret = kft_pump(ctx_comment);
+          if (ret != KFT_SUCCESS) {
+            return KFT_FAILURE;
+          }
+          return KFT_SUCCESS;
         }
         default:
           ungetc(ch, ifp);
@@ -399,6 +441,10 @@ static inline int kft_pump(struct kft_pump_context ctx) {
     }
 
     if (is_delim_en || is_delim_st) {
+      continue;
+    }
+
+    if (is_comment) {
       continue;
     }
 
