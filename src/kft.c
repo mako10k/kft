@@ -1,3 +1,4 @@
+#include "kft.h"
 #include <assert.h>
 #include <errno.h>
 #include <getopt.h>
@@ -20,7 +21,6 @@ struct kft_pump_context {
   size_t delim_st_len;
   const char *delim_en;
   size_t delim_en_len;
-  const char *shell;
   kft_vars_t *vars;
   int is_comment;
 };
@@ -58,7 +58,6 @@ static inline int ktf_printvar(const struct kft_pump_context ctx) {
       .delim_st_len = ctx.delim_st_len,
       .delim_en = ctx.delim_en,
       .delim_en_len = ctx.delim_en_len,
-      .shell = ctx.shell,
       .vars = ctx.vars,
       .is_comment = 0,
   };
@@ -96,7 +95,6 @@ static inline int kft_exec(const struct kft_pump_context ctx,
   assert(ctx.delim_st_len > 0);
   assert(ctx.delim_en != NULL);
   assert(ctx.delim_en_len > 0);
-  assert(ctx.shell != NULL);
   assert(ctx.vars != NULL);
   assert(file != NULL);
   assert(argv != NULL);
@@ -178,7 +176,6 @@ static inline int kft_exec(const struct kft_pump_context ctx,
       .delim_st_len = ctx.delim_st_len,
       .delim_en = ctx.delim_en,
       .delim_en_len = ctx.delim_en_len,
-      .shell = ctx.shell,
       .vars = ctx.vars,
       .is_comment = 0,
   };
@@ -249,7 +246,6 @@ static inline int kft_pump(struct kft_pump_context ctx) {
   assert(ctx.delim_st_len > 0);
   assert(ctx.delim_en != NULL);
   assert(ctx.delim_en_len > 0);
-  assert(ctx.shell != NULL);
   assert(ctx.vars != NULL);
 
   FILE *const ifp = ctx.ifp;
@@ -259,7 +255,6 @@ static inline int kft_pump(struct kft_pump_context ctx) {
   const size_t delim_st_len = ctx.delim_st_len;
   const char *restrict delim_en = ctx.delim_en;
   const size_t delim_en_len = ctx.delim_en_len;
-  const char *const shell = ctx.shell;
   kft_vars_t *const vars = ctx.vars;
   int is_comment = ctx.is_comment;
 
@@ -356,7 +351,6 @@ static inline int kft_pump(struct kft_pump_context ctx) {
               .delim_st_len = delim_st_len,
               .delim_en = delim_en,
               .delim_en_len = delim_en_len,
-              .shell = shell,
               .vars = vars,
               .is_comment = 1,
           };
@@ -379,6 +373,13 @@ static inline int kft_pump(struct kft_pump_context ctx) {
           continue;
         }
         case '!': { // EXECUTE IN DEFAULT SHELL
+          const char *shell = kft_var_get(vars, KFT_ENVNAME_SHELL);
+          if (shell == NULL) {
+            shell = kft_var_get(vars, KFT_ENVNAME_SHELL_RAW);
+          }
+          if (shell == NULL) {
+            shell = KFT_OPTDEF_SHELL;
+          }
           const char *const argv[] = {shell, NULL};
           const int ret = kft_exec(ctx, shell, argv);
           if (ret != 0) {
@@ -395,7 +396,6 @@ static inline int kft_pump(struct kft_pump_context ctx) {
               .delim_st_len = delim_st_len,
               .delim_en = delim_en,
               .delim_en_len = delim_en_len,
-              .shell = shell,
               .vars = vars,
               .is_comment = 1,
           };
@@ -467,7 +467,6 @@ int main(int argc, char *argv[]) {
   struct option long_options[] = {
       {"eval", required_argument, NULL, 'e'},
       {"export", required_argument, NULL, 'x'},
-      {"shell", required_argument, NULL, 's'},
       {"output", required_argument, NULL, 'o'},
       {"escape", required_argument, NULL, 'E'},
       {"start", required_argument, NULL, 'S'},
@@ -480,7 +479,6 @@ int main(int argc, char *argv[]) {
   size_t nevals = 0;
   char **opt_vars = NULL;
   size_t nvars = 0;
-  const char *opt_shell = NULL;
   const char *opt_output = NULL;
 
   int opt_escape = -1;
@@ -488,7 +486,7 @@ int main(int argc, char *argv[]) {
   const char *opt_end = NULL;
   FILE *ofp = stdout;
   int opt;
-  while ((opt = getopt_long(argc, argv, "e:x:s:o:E:S:R:hv", long_options,
+  while ((opt = getopt_long(argc, argv, "e:x:o:E:S:R:hv", long_options,
                             NULL)) != -1) {
     switch (opt) {
     case 'e':
@@ -507,14 +505,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
       }
       opt_vars[nvars++] = optarg;
-      break;
-
-    case 's':
-      if (opt_shell != NULL) {
-        fprintf(stderr, "error: multiple shell options\n");
-        return EXIT_FAILURE;
-      }
-      opt_shell = optarg;
       break;
 
     case 'o':
@@ -566,11 +556,15 @@ int main(int argc, char *argv[]) {
              "set with VAL\n");
       printf("  -x, --export=NAME=    variable NAME as environment variable "
              "but unset\n");
-      printf("  -s, --shell=STRING    use shell STRING\n");
-      printf("  -o, --output=FILE     write to FILE\n");
-      printf("  -E, --escape=CHAR     escape character\n");
-      printf("  -S, --start=STRING    start delimiter\n");
-      printf("  -R, --end=STRING      end delimiter\n");
+      printf("  -s, --shell=STRING    use shell STRING [$%s, $%s or %s]\n",
+             KFT_ENVNAME_SHELL, KFT_ENVNAME_SHELL_RAW, KFT_OPTDEF_SHELL);
+      printf("  -o, --output=FILE     write to FILE [stdout]\n");
+      printf("  -E, --escape=CHAR     escape character [$%s or %c]\n",
+             KFT_ENVNAME_ESCAPE, KFT_OPTDEF_ESCAPE);
+      printf("  -S, --start=STRING    start delimiter [$%s or %s]\n",
+             KFT_ENVNAME_BEGIN, KFT_OPTDEF_BEGIN);
+      printf("  -R, --end=STRING      end delimite [$%s or %s]\n",
+             KFT_ENVNAME_END, KFT_OPTDEF_END);
       printf("  -h, --help            display this help and exit\n");
       printf("  -v, --version         output version information and exit\n");
       printf("\n");
@@ -578,31 +572,38 @@ int main(int argc, char *argv[]) {
       printf("  NAME=VAL              set variable NAME with VAL\n");
       printf("  NAME=                 unset variable NAME\n");
       printf("\n");
-      printf("Environment:\n");
-      printf("  KFT_SHELL             default shell\n");
+      printf("*note* set or unset for environment variable when NAME is "
+             "exported\n");
+      printf("\n");
+      printf("Environment Variables:\n");
+      printf("  $%-21sdefault shell\n", KFT_ENVNAME_SHELL);
+      printf("  $%-21sdefault shell (only no $%s is defined)\n",
+             KFT_ENVNAME_SHELL_RAW, KFT_ENVNAME_SHELL);
+      printf("  $%-21sdefault escape character\n", KFT_ENVNAME_ESCAPE);
+      printf("  $%-21sdefault start delimiter\n", KFT_ENVNAME_BEGIN);
+      printf("  $%-21sdefault end delimiter\n", KFT_ENVNAME_END);
+      printf("\n");
+      printf("Templates:\n");
+      printf("  %s$VAR%s              print VAR\n", KFT_OPTDEF_BEGIN,
+             KFT_OPTDEF_END);
+      printf("  %s!...%s              execute in default shell\n",
+             KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
+      printf("  %s-...%s              comment block\n", KFT_OPTDEF_BEGIN,
+             KFT_OPTDEF_END);
+      printf("\n");
+      printf("*note* %s and %s are start and end delimiters\n",
+             KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
       printf("\n");
       return 0;
 
     case 'v':
-      printf("kft 0.1.0\n");
+      printf("%s\n", PACKAGE_STRING);
       return 0;
+
+    default:
+      fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+      return EXIT_FAILURE;
     }
-  }
-
-  if (opt_escape == -1) {
-    opt_escape = '\\';
-  }
-
-  if (opt_shell == NULL) {
-    opt_shell = getenv("KFT_SHELL");
-  }
-
-  if (opt_shell == NULL) {
-    opt_shell = getenv("SHELL");
-  }
-
-  if (opt_shell == NULL) {
-    opt_shell = "/bin/sh";
   }
 
   if (opt_output != NULL) {
@@ -615,27 +616,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
       }
     }
-  }
-
-  if (opt_escape == -1) {
-    char *esc = getenv("KFT_ESCAPE");
-    opt_escape = esc == NULL ? '\\' : esc[0];
-  }
-
-  if (opt_begin == NULL) {
-    opt_begin = getenv("KFT_BEGIN");
-  }
-
-  if (opt_begin == NULL) {
-    opt_begin = "{{";
-  }
-
-  if (opt_end == NULL) {
-    opt_end = getenv("KFT_END");
-  }
-
-  if (opt_end == NULL) {
-    opt_end = "}}";
   }
 
   kft_vars_t vars = {.root = NULL};
@@ -699,6 +679,27 @@ int main(int argc, char *argv[]) {
     optind++;
   }
 
+  if (opt_escape == -1) {
+    const char *esc = kft_var_get(&vars, KFT_ENVNAME_ESCAPE);
+    opt_escape = esc == NULL ? KFT_OPTDEF_ESCAPE : esc[0];
+  }
+
+  if (opt_begin == NULL) {
+    opt_begin = kft_var_get(&vars, KFT_ENVNAME_BEGIN);
+  }
+
+  if (opt_begin == NULL) {
+    opt_begin = KFT_OPTDEF_BEGIN;
+  }
+
+  if (opt_end == NULL) {
+    opt_end = kft_var_get(&vars, KFT_ENVNAME_END);
+  }
+
+  if (opt_end == NULL) {
+    opt_end = KFT_OPTDEF_END;
+  }
+
   for (size_t i = 0; i < nevals; i++) {
     FILE *ifp_mem = fmemopen(opt_eval[i], strlen(opt_eval[i]), "r");
     if (ifp_mem == NULL) {
@@ -713,7 +714,6 @@ int main(int argc, char *argv[]) {
         .delim_st_len = strlen(opt_begin),
         .delim_en = opt_end,
         .delim_en_len = strlen(opt_end),
-        .shell = opt_shell,
         .vars = &vars,
     };
 
@@ -738,7 +738,6 @@ int main(int argc, char *argv[]) {
         .delim_st_len = strlen(opt_begin),
         .delim_en = opt_end,
         .delim_en_len = strlen(opt_end),
-        .shell = opt_shell,
         .vars = &vars,
     };
     return kft_pump(ctx);
@@ -764,7 +763,6 @@ int main(int argc, char *argv[]) {
         .delim_st_len = strlen(opt_begin),
         .delim_en = opt_end,
         .delim_en_len = strlen(opt_end),
-        .shell = opt_shell,
         .vars = &vars,
     };
     return kft_pump(ctx);

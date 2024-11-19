@@ -3,3 +3,6 @@ CompileFlags:
         - -Wall
         - -Wextra
         - -Werror
+        - -DHAVE_CONFIG_H
+        - -I.
+        - -I..
