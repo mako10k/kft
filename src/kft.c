@@ -43,10 +43,10 @@ struct kft_pump_context {
 
 static inline int kft_pump(const struct kft_pump_context ctx);
 
-static inline int ktf_printvar(const struct kft_pump_context ctx) {
-  char *name = NULL;
-  size_t namelen = 0;
-  FILE *const stream = open_memstream(&name, &namelen);
+static inline int ktf_run_var(const struct kft_pump_context ctx) {
+  char *var = NULL;
+  size_t varlen = 0;
+  FILE *const stream = open_memstream(&var, &varlen);
   if (stream == NULL) {
     return KFT_FAILURE;
   }
@@ -66,14 +66,25 @@ static inline int ktf_printvar(const struct kft_pump_context ctx) {
     return KFT_FAILURE;
   }
   fclose(stream);
-  const char *const env = kft_var_get(ctx.vars, name);
-  if (env != NULL) {
-    const int ret = fwrite(env, 1, strlen(env), ctx.ofp);
-    if (ret < (int)strlen(env)) {
+  char *val = strchr(var, '=');
+  if (val != NULL) {
+    *val = '\0';
+    val++;
+    const int ret = kft_var_set(ctx.vars, var, val);
+    if (ret != 0) {
       return KFT_FAILURE;
     }
+  } else {
+    const char *const name = var;
+    const char *const env = kft_var_get(ctx.vars, name);
+    if (env != NULL) {
+      const int ret = fwrite(env, 1, strlen(env), ctx.ofp);
+      if (ret < (int)strlen(env)) {
+        return KFT_FAILURE;
+      }
+    }
   }
-  free(name);
+  free(var);
   return KFT_SUCCESS;
 }
 
@@ -366,7 +377,7 @@ static inline int kft_pump(struct kft_pump_context ctx) {
         }
         switch (ch) {
         case '$': { // PRINT VAR
-          const int ret = ktf_printvar(ctx);
+          const int ret = ktf_run_var(ctx);
           if (ret != KFT_SUCCESS) {
             return KFT_FAILURE;
           }
@@ -585,6 +596,8 @@ int main(int argc, char *argv[]) {
       printf("\n");
       printf("Templates:\n");
       printf("  %s$VAR%s              print VAR\n", KFT_OPTDEF_BEGIN,
+             KFT_OPTDEF_END);
+      printf("  %s$VAR=VALUE%s        assign VAR as VALUE\n", KFT_OPTDEF_BEGIN,
              KFT_OPTDEF_END);
       printf("  %s!...%s              execute in default shell\n",
              KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
