@@ -1,4 +1,5 @@
 #pragma once
+#include "kft.h"
 
 #include <assert.h>
 #include <search.h>
