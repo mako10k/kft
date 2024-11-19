@@ -16,5 +16,8 @@
 #define KFT_OPTDEF_BEGIN "{{"
 #define KFT_OPTDEF_END "}}"
 
+#define KFT_VARNAME_INPUT "INPUT"
+#define KFT_VARNAME_OUTPUT "OUTPUT"
+
 #define KFT_SUCCESS 0
 #define KFT_FAILURE -1

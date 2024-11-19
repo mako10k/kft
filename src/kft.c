@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <getopt.h>
+#include <limits.h>
 #include <pthread.h>
 #include <search.h>
 #include <stdio.h>
@@ -12,20 +13,105 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-struct kft_pump_context {
-  FILE *ifp;
-  FILE *ofp;
+typedef struct kft_input {
+  FILE *fp;
+  unsigned int row;
+  unsigned int col;
+  const char *filename;
+} kft_input_t;
+
+typedef struct kft_output {
+  FILE *fp;
+  const char *filename;
+} kft_output_t;
+
+typedef struct kft_context {
+  // ------------- INPUT
+  struct kft_input *input;
+
+  // ------------- OUTPUT
+  struct kft_output *output;
+
+  // ------------- CONFIG
   int esc;
   const char *delim_st;
   size_t delim_st_len;
   const char *delim_en;
   size_t delim_en_len;
-  kft_vars_t *vars;
-  int is_comment;
-};
 
-#define KFT_SUCCESS 0
-#define KFT_FAILURE -1
+  // ------------- VARIABLES
+  kft_vars_t *vars;
+
+  // ------------- FLAGS
+  int is_comment;
+  int col_start;
+  int row_start;
+} kft_context_t;
+
+static inline kft_context_t kft_context_init_start(kft_context_t ctx) {
+  kft_context_t ctx_ret = ctx;
+  ctx_ret.col_start = ctx.input->col;
+  ctx_ret.row_start = ctx.input->row;
+  return ctx_ret;
+}
+
+static inline kft_context_t kft_context_init_input(kft_context_t ctx,
+                                                   kft_input_t *inputp) {
+  kft_context_t ctx_ret = ctx;
+  ctx_ret.input = inputp;
+  return ctx_ret;
+}
+
+static inline kft_context_t kft_context_init_output(kft_context_t ctx,
+                                                    kft_output_t *outputp) {
+  kft_context_t ctx_ret = ctx;
+  ctx_ret.output = outputp;
+  return ctx_ret;
+}
+
+static inline kft_context_t kft_context_init_comment(kft_context_t ctx) {
+  kft_context_t ctx_ret = ctx;
+  ctx_ret.is_comment = 1;
+  return ctx_ret;
+}
+
+static inline const char *kft_fd_to_path(int fd, char *buf, size_t buflen) {
+  char path_fd[strlen("/dev/fd/2147483647") + 1];
+  snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", fd);
+  const ssize_t ret = readlink(path_fd, buf, buflen);
+  if (ret != -1) {
+    buf[ret] = '\0';
+    return buf;
+  }
+  return NULL;
+}
+
+static inline kft_input_t kft_input_init(FILE *fp, char *filename,
+                                         size_t filenamelen,
+                                         int resolve_filename) {
+  if (resolve_filename) {
+    int fd = fileno(fp);
+    if (fd >= 0) {
+      kft_fd_to_path(fd, filename, filenamelen);
+    }
+  }
+  const kft_input_t input = {
+      .fp = fp, .filename = filename, .col = 0, .row = 0};
+  return input;
+}
+
+static inline kft_output_t kft_output_init(FILE *fp, char *filename,
+                                           size_t filenamelen,
+                                           int resolve_filename) {
+  if (resolve_filename) {
+    int fd = fileno(fp);
+    if (fd >= 0) {
+      kft_fd_to_path(fd, filename, filenamelen);
+    }
+  }
+  const kft_output_t output = {.fp = fp, .filename = filename};
+  return output;
+}
 
 #define min(a, b)                                                              \
   ({                                                                           \
@@ -40,72 +126,62 @@ struct kft_pump_context {
     _a > _b ? _a : _b;                                                         \
   })
 
-static inline int kft_pump(const struct kft_pump_context ctx);
+static inline int kft_pump(const kft_context_t ctx);
 
-static inline int ktf_run_var(const struct kft_pump_context ctx) {
-  char *var = NULL;
-  size_t varlen = 0;
-  FILE *const stream = open_memstream(&var, &varlen);
+static inline int ktf_run_var(const kft_context_t ctx) {
+  char *var_spec = NULL;
+  size_t var_spec_len = 0;
+  FILE *const stream = open_memstream(&var_spec, &var_spec_len);
   if (stream == NULL) {
     return KFT_FAILURE;
   }
-  const struct kft_pump_context ctx_mem = {
-      .ifp = ctx.ifp,
-      .ofp = stream,
-      .esc = ctx.esc,
-      .delim_st = ctx.delim_st,
-      .delim_st_len = ctx.delim_st_len,
-      .delim_en = ctx.delim_en,
-      .delim_en_len = ctx.delim_en_len,
-      .vars = ctx.vars,
-      .is_comment = 0,
-  };
+  kft_output_t output = {.fp = stream, .filename = "<inline>"};
+  const kft_context_t ctx_mem = kft_context_init_output(ctx, &output);
+
   const int ret = kft_pump(ctx_mem);
   if (ret != KFT_SUCCESS) {
     fclose(stream);
     return KFT_FAILURE;
   }
   fclose(stream);
-  char *val = strchr(var, '=');
+  char *val = strchr(var_spec, '=');
   if (val != NULL) {
     *val = '\0';
     val++;
-    const int ret = kft_var_set(ctx.vars, var, val);
+    const int ret = kft_var_set(ctx.vars, var_spec, val);
     if (ret != 0) {
       return KFT_FAILURE;
     }
   } else {
-    const char *const name = var;
-    const char *const env = kft_var_get(ctx.vars, name);
+    const char *const name = var_spec;
+    const char *env = kft_var_get(ctx.vars, name);
+    if (env == NULL) {
+      if (strcmp(KFT_VARNAME_INPUT, name) == 0) {
+        env = ctx.input->filename;
+      } else if (strcmp(KFT_VARNAME_OUTPUT, name) == 0) {
+        env = ctx.output->filename;
+      }
+    }
     if (env != NULL) {
-      const int ret = fwrite(env, 1, strlen(env), ctx.ofp);
+      const int ret = fwrite(env, 1, strlen(env), ctx.output->fp);
       if (ret < (int)strlen(env)) {
         return KFT_FAILURE;
       }
     }
   }
-  free(var);
+  free(var_spec);
   return KFT_SUCCESS;
 }
 
-static inline int ktf_run_write(const struct kft_pump_context ctx) {
+static inline int ktf_run_write(const kft_context_t ctx) {
   char *filename = NULL;
   size_t varlen = 0;
   FILE *const stream = open_memstream(&filename, &varlen);
   if (stream == NULL) {
     return KFT_FAILURE;
   }
-  const struct kft_pump_context ctx_mem = {
-      .ifp = ctx.ifp,
-      .ofp = stream,
-      .esc = ctx.esc,
-      .delim_st = ctx.delim_st,
-      .delim_st_len = ctx.delim_st_len,
-      .delim_en = ctx.delim_en,
-      .delim_en_len = ctx.delim_en_len,
-      .vars = ctx.vars,
-      .is_comment = 0,
-  };
+  kft_output_t output = {.fp = stream, .filename = "<inline>"};
+  const kft_context_t ctx_mem = kft_context_init_output(ctx, &output);
   const int ret = kft_pump(ctx_mem);
   if (ret != KFT_SUCCESS) {
     fclose(stream);
@@ -117,41 +193,23 @@ static inline int ktf_run_write(const struct kft_pump_context ctx) {
     free(filename);
     return KFT_FAILURE;
   }
-  const struct kft_pump_context ctx_write = {
-      .ifp = ctx.ifp,
-      .ofp = ofp,
-      .esc = ctx.esc,
-      .delim_st = ctx.delim_st,
-      .delim_st_len = ctx.delim_st_len,
-      .delim_en = ctx.delim_en,
-      .delim_en_len = ctx.delim_en_len,
-      .vars = ctx.vars,
-      .is_comment = 0,
-  };
-  const int ret2 = kft_pump(ctx_write);
+  kft_output_t output_write = {.fp = ofp, .filename = filename};
+  const kft_context_t ctx_write = kft_context_init_output(ctx, &output_write);
+  const int ret_write = kft_pump(ctx_write);
   fclose(ofp);
   free(filename);
-  return ret2;
+  return ret_write;
 }
 
-static inline int ktf_run_read(const struct kft_pump_context ctx) {
+static inline int ktf_run_read(const kft_context_t ctx) {
   char *filename = NULL;
   size_t varlen = 0;
   FILE *const stream = open_memstream(&filename, &varlen);
   if (stream == NULL) {
     return KFT_FAILURE;
   }
-  const struct kft_pump_context ctx_mem = {
-      .ifp = ctx.ifp,
-      .ofp = stream,
-      .esc = ctx.esc,
-      .delim_st = ctx.delim_st,
-      .delim_st_len = ctx.delim_st_len,
-      .delim_en = ctx.delim_en,
-      .delim_en_len = ctx.delim_en_len,
-      .vars = ctx.vars,
-      .is_comment = 0,
-  };
+  kft_output_t output = {.fp = stream, .filename = "<inline>"};
+  const kft_context_t ctx_mem = kft_context_init_output(ctx, &output);
   const int ret = kft_pump(ctx_mem);
   if (ret != KFT_SUCCESS) {
     fclose(stream);
@@ -163,17 +221,8 @@ static inline int ktf_run_read(const struct kft_pump_context ctx) {
     free(filename);
     return KFT_FAILURE;
   }
-  const struct kft_pump_context ctx_write = {
-      .ifp = ifp,
-      .ofp = ctx.ofp,
-      .esc = ctx.esc,
-      .delim_st = ctx.delim_st,
-      .delim_st_len = ctx.delim_st_len,
-      .delim_en = ctx.delim_en,
-      .delim_en_len = ctx.delim_en_len,
-      .vars = ctx.vars,
-      .is_comment = 0,
-  };
+  kft_input_t input = {.fp = ifp, .filename = filename, .col = 0, .row = 0};
+  const kft_context_t ctx_write = kft_context_init_input(ctx, &input);
   const int ret2 = kft_pump(ctx_write);
   fclose(ifp);
   free(filename);
@@ -181,19 +230,23 @@ static inline int ktf_run_read(const struct kft_pump_context ctx) {
 }
 
 static inline void *kft_pump_run(void *data) {
-  const struct kft_pump_context *const restrict ctx = data;
+  const kft_context_t *const restrict ctx = data;
   const int ret = kft_pump(*ctx);
   if (ret != KFT_SUCCESS) {
     return (void *)(intptr_t)KFT_FAILURE;
   }
-  fclose(ctx->ofp);
+  fclose(ctx->output->fp);
   return (void *)(intptr_t)KFT_SUCCESS;
 }
 
-static inline int kft_exec(const struct kft_pump_context ctx,
-                           const char *const file, const char *const argv[]) {
-  assert(ctx.ifp != NULL);
-  assert(ctx.ofp != NULL);
+static inline int kft_exec(const kft_context_t ctx, const char *const file,
+                           const char *const argv[]) {
+  assert(ctx.input != NULL);
+  assert(ctx.input->fp != NULL);
+  assert(ctx.input->filename != NULL);
+  assert(ctx.output != NULL);
+  assert(ctx.output->fp != NULL);
+  assert(ctx.output->filename != NULL);
   assert(ctx.delim_st != NULL);
   assert(ctx.delim_st_len > 0);
   assert(ctx.delim_en != NULL);
@@ -271,17 +324,10 @@ static inline int kft_exec(const struct kft_pump_context ctx,
   if (ofp_new == NULL) {
     return KFT_FAILURE;
   }
-  const struct kft_pump_context ctx_pump = {
-      .ifp = ctx.ifp,
-      .ofp = ofp_new,
-      .esc = ctx.esc,
-      .delim_st = ctx.delim_st,
-      .delim_st_len = ctx.delim_st_len,
-      .delim_en = ctx.delim_en,
-      .delim_en_len = ctx.delim_en_len,
-      .vars = ctx.vars,
-      .is_comment = 0,
-  };
+  char filename[strlen(file) + 2];
+  snprintf(filename, sizeof(filename), "|%s", file);
+  kft_output_t output = {.fp = ofp_new, .filename = filename};
+  const kft_context_t ctx_pump = kft_context_init_output(ctx, &output);
   pthread_t thread;
   const int ret =
       pthread_create(&thread, NULL, kft_pump_run, (void *)&ctx_pump);
@@ -301,7 +347,7 @@ static inline int kft_exec(const struct kft_pump_context ctx,
     if (len == 0) {
       break;
     }
-    const size_t ret = fwrite(buf, 1, len, ctx.ofp);
+    const size_t ret = fwrite(buf, 1, len, ctx.output->fp);
     if (ret < (size_t)len) {
       return KFT_FAILURE;
     }
@@ -342,27 +388,21 @@ static inline int kft_exec(const struct kft_pump_context ctx,
   return retcode;
 }
 
-static inline int kft_pump(struct kft_pump_context ctx) {
-  assert(ctx.ifp != NULL);
-  assert(ctx.ofp != NULL);
+static inline int kft_pump(const kft_context_t ctx) {
+  assert(ctx.input != NULL);
+  assert(ctx.input->fp != NULL);
+  assert(ctx.input->filename != NULL);
+  assert(ctx.output != NULL);
+  assert(ctx.output->fp != NULL);
+  assert(ctx.output->filename != NULL);
   assert(ctx.delim_st != NULL);
   assert(ctx.delim_st_len > 0);
   assert(ctx.delim_en != NULL);
   assert(ctx.delim_en_len > 0);
   assert(ctx.vars != NULL);
 
-  FILE *const ifp = ctx.ifp;
-  FILE *const ofp = ctx.ofp;
-  const int esc = ctx.esc;
-  const char *restrict delim_st = ctx.delim_st;
-  const size_t delim_st_len = ctx.delim_st_len;
-  const char *restrict delim_en = ctx.delim_en;
-  const size_t delim_en_len = ctx.delim_en_len;
-  kft_vars_t *const vars = ctx.vars;
-  int is_comment = ctx.is_comment;
-
-  (void)vars;
-
+  int row_prev = 0;
+  int col_prev = 0;
   size_t shebang_pos = 0;
   size_t esc_pos = 0;
   size_t delim_st_pos = 0;
@@ -370,20 +410,29 @@ static inline int kft_pump(struct kft_pump_context ctx) {
 
   while (1) {
 
-    const int ch = fgetc(ifp);
+    const int ch = fgetc(ctx.input->fp);
     if (ch == EOF) {
       return KFT_SUCCESS;
+    }
+    if (ch == '\n') {
+      row_prev = ctx.input->row;
+      ctx.input->row++;
+      col_prev = ctx.input->col;
+      ctx.input->col = 0;
+    } else {
+      col_prev = ctx.input->col;
+      ctx.input->col++;
     }
 
     // process shebang
     if (shebang_pos == 0) {
       if (ch == '#') {
         struct stat st;
-        int fd = fileno(ifp);
+        int fd = fileno(ctx.input->fp);
         if (fd >= 0) {
           int ret = fstat(fd, &st);
           if (ret == 0 && S_ISREG(st.st_mode)) {
-            long pos = ftell(ifp);
+            long pos = ftell(ctx.input->fp);
             if (pos == 1) {
               shebang_pos = 1;
               continue;
@@ -396,11 +445,11 @@ static inline int kft_pump(struct kft_pump_context ctx) {
       if (ch == '!') {
         shebang_pos = 2;
       } else {
-        int ret = fputc('#', ofp);
+        int ret = fputc('#', ctx.output->fp);
         if (ret == EOF) {
           return KFT_FAILURE;
         }
-        ret = fputc(ch, ofp);
+        ret = fputc(ch, ctx.output->fp);
         if (ret == EOF) {
           return KFT_FAILURE;
         }
@@ -416,7 +465,7 @@ static inline int kft_pump(struct kft_pump_context ctx) {
 
     // process escape character
     if (esc_pos) {
-      const int ret = fputc(ch, ofp);
+      const int ret = fputc(ch, ctx.output->fp);
       if (ret == EOF) {
         return KFT_FAILURE;
       }
@@ -425,106 +474,117 @@ static inline int kft_pump(struct kft_pump_context ctx) {
     }
 
     // process normal character
-    if (ch == esc) {
+    if (ch == ctx.esc) {
       esc_pos = 1;
       continue;
     }
 
     // process end delimiter
-    const size_t is_delim_en = delim_en[delim_en_pos] == ch;
+    const size_t is_delim_en = ctx.delim_en[delim_en_pos] == ch;
     if (is_delim_en) {
       delim_en_pos++;
-      if (delim_en_pos == delim_en_len) {
+      if (delim_en_pos == ctx.delim_en_len) {
+        if (ctx.col_start == (int)ctx.delim_st_len) {
+          const int ch = fgetc(ctx.input->fp);
+          if (ch == EOF) {
+            return KFT_SUCCESS;
+          }
+          if (ch == '\n') {
+            // skip newline
+            row_prev = ctx.input->row;
+            ctx.input->row++;
+            col_prev = ctx.input->col;
+            ctx.input->col = 0;
+          } else {
+            ungetc(ch, ctx.input->fp);
+          }
+        }
         return KFT_SUCCESS;
       }
     }
 
     // process start delimiter
-    const int is_delim_st = delim_st[delim_st_pos] == ch;
+    const int is_delim_st = ctx.delim_st[delim_st_pos] == ch;
     if (is_delim_st) {
       delim_st_pos++;
-      if (delim_st_pos == delim_st_len) {
+      if (delim_st_pos == ctx.delim_st_len) {
         delim_st_pos = 0;
-        if (is_comment) {
-          struct kft_pump_context ctx_comment = {
-              .ifp = ifp,
-              .ofp = ofp,
-              .esc = esc,
-              .delim_st = delim_st,
-              .delim_st_len = delim_st_len,
-              .delim_en = delim_en,
-              .delim_en_len = delim_en_len,
-              .vars = vars,
-              .is_comment = 1,
-          };
-          const int ret = kft_pump(ctx_comment);
+        if (ctx.is_comment) {
+          const int ret = kft_pump(ctx);
           if (ret != KFT_SUCCESS) {
             return KFT_FAILURE;
           }
-          return KFT_SUCCESS;
+          continue;
         }
-        const int ch = fgetc(ifp);
+        const kft_context_t ctx_start = kft_context_init_start(ctx);
+        const int ch = fgetc(ctx.input->fp);
         if (ch == EOF) {
           return KFT_SUCCESS;
         }
+        if (ch == '\n') {
+          row_prev = ctx.input->row;
+          ctx.input->row++;
+          col_prev = ctx.input->col;
+          ctx.input->col = 0;
+        } else {
+          col_prev = ctx.input->col;
+          ctx.input->col++;
+        }
         switch (ch) {
         case '$': { // PRINT VAR
-          const int ret = ktf_run_var(ctx);
+          const int ret = ktf_run_var(ctx_start);
           if (ret != KFT_SUCCESS) {
             return KFT_FAILURE;
           }
           continue;
         }
         case '!': { // EXECUTE IN DEFAULT SHELL
-          const char *shell = kft_var_get(vars, KFT_ENVNAME_SHELL);
+          const char *shell = kft_var_get(ctx_start.vars, KFT_ENVNAME_SHELL);
           if (shell == NULL) {
-            shell = kft_var_get(vars, KFT_ENVNAME_SHELL_RAW);
+            shell = kft_var_get(ctx_start.vars, KFT_ENVNAME_SHELL_RAW);
           }
           if (shell == NULL) {
             shell = KFT_OPTDEF_SHELL;
           }
           const char *const argv[] = {shell, NULL};
-          const int ret = kft_exec(ctx, shell, argv);
+          const int ret = kft_exec(ctx_start, shell, argv);
           if (ret != 0) {
             return KFT_FAILURE;
           }
           continue;
         }
         case '-': { // COMMENT BLOCK
-          struct kft_pump_context ctx_comment = {
-              .ifp = ifp,
-              .ofp = ofp,
-              .esc = esc,
-              .delim_st = delim_st,
-              .delim_st_len = delim_st_len,
-              .delim_en = delim_en,
-              .delim_en_len = delim_en_len,
-              .vars = vars,
-              .is_comment = 1,
-          };
+          const kft_context_t ctx_comment = kft_context_init_comment(ctx_start);
           const int ret = kft_pump(ctx_comment);
           if (ret != KFT_SUCCESS) {
             return KFT_FAILURE;
           }
-          return KFT_SUCCESS;
+          continue;
         }
         case '>': { // WRITE TO FILE
-          const int ret = ktf_run_write(ctx);
+          const int ret = ktf_run_write(ctx_start);
           if (ret != KFT_SUCCESS) {
             return KFT_FAILURE;
           }
           continue;
         }
         case '<': { // READ FROM FILE
-          const int ret = ktf_run_read(ctx);
+          const int ret = ktf_run_read(ctx_start);
           if (ret != KFT_SUCCESS) {
             return KFT_FAILURE;
           }
           continue;
         }
-        default:
-          ungetc(ch, ifp);
-          break;
+        default: {
+          ungetc(ch, ctx_start.input->fp);
+          ctx_start.input->row = row_prev;
+          ctx_start.input->col = col_prev;
+          const int ret = kft_pump(ctx_start);
+          if (ret != KFT_SUCCESS) {
+            return KFT_FAILURE;
+          }
+          continue;
+        }
         }
       }
 
@@ -532,12 +592,14 @@ static inline int kft_pump(struct kft_pump_context ctx) {
       if ((delim_en_pos > 0 && !is_delim_en) &&
           (delim_st_pos > 0 && !is_delim_st)) {
         if (delim_en_pos > delim_st_pos) {
-          const size_t ret = fwrite(delim_en, 1, delim_en_pos, ofp);
+          const size_t ret =
+              fwrite(ctx.delim_en, 1, delim_en_pos, ctx.output->fp);
           if (ret < delim_en_pos) {
             return KFT_FAILURE;
           }
         } else {
-          const size_t ret = fwrite(delim_st, 1, delim_st_pos, ofp);
+          const size_t ret =
+              fwrite(ctx.delim_st, 1, delim_st_pos, ctx.output->fp);
           if (ret < delim_st_pos) {
             return KFT_FAILURE;
           }
@@ -546,8 +608,8 @@ static inline int kft_pump(struct kft_pump_context ctx) {
         delim_st_pos = 0;
       } else if (delim_en_pos > 0 && !is_delim_en) {
         if (delim_st_pos < delim_en_pos) {
-          const size_t ret =
-              fwrite(delim_en, 1, delim_en_pos - delim_st_pos, ofp);
+          const size_t ret = fwrite(
+              ctx.delim_en, 1, delim_en_pos - delim_st_pos, ctx.output->fp);
           if (ret < delim_en_pos - delim_st_pos) {
             return KFT_FAILURE;
           }
@@ -555,8 +617,8 @@ static inline int kft_pump(struct kft_pump_context ctx) {
         delim_en_pos = 0;
       } else if (delim_st_pos > 0 && !is_delim_st) {
         if (delim_en_pos < delim_st_pos) {
-          const size_t ret =
-              fwrite(delim_st, 1, delim_st_pos - delim_en_pos, ofp);
+          const size_t ret = fwrite(
+              ctx.delim_st, 1, delim_st_pos - delim_en_pos, ctx.output->fp);
           if (ret < delim_st_pos - delim_en_pos) {
             return KFT_FAILURE;
           }
@@ -569,12 +631,12 @@ static inline int kft_pump(struct kft_pump_context ctx) {
       continue;
     }
 
-    if (is_comment) {
+    if (ctx.is_comment) {
       continue;
     }
 
     // process normal character
-    const int ret = fputc(ch, ofp);
+    const int ret = fputc(ch, ctx.output->fp);
     if (ret == EOF)
       return KFT_FAILURE;
   }
@@ -823,22 +885,32 @@ int main(int argc, char *argv[]) {
     opt_end = KFT_OPTDEF_END;
   }
 
+  char input_filename[PATH_MAX] = "<stdin>";
+  char output_filename[PATH_MAX] = "<stdout>";
+  kft_input_t input =
+      kft_input_init(stdin, input_filename, sizeof(input_filename), 1);
+  kft_output_t output =
+      kft_output_init(ofp, output_filename, sizeof(output_filename), 1);
+
+  const kft_context_t ctx = {
+      .input = &input,
+      .output = &output,
+      .esc = opt_escape,
+      .delim_st = opt_begin,
+      .delim_st_len = strlen(opt_begin),
+      .delim_en = opt_end,
+      .delim_en_len = strlen(opt_end),
+      .vars = &vars,
+  };
+
   for (size_t i = 0; i < nevals; i++) {
     FILE *ifp_mem = fmemopen(opt_eval[i], strlen(opt_eval[i]), "r");
     if (ifp_mem == NULL) {
       perror("fmemopen");
       return EXIT_FAILURE;
     }
-    const struct kft_pump_context ctx_eval = {
-        .ifp = ifp_mem,
-        .ofp = ofp,
-        .esc = opt_escape,
-        .delim_st = opt_begin,
-        .delim_st_len = strlen(opt_begin),
-        .delim_en = opt_end,
-        .delim_en_len = strlen(opt_end),
-        .vars = &vars,
-    };
+    kft_output_t output = {.fp = ofp, .filename = opt_eval[i]};
+    const kft_context_t ctx_eval = kft_context_init_output(ctx, &output);
 
     int ret = kft_pump(ctx_eval);
     fclose(ifp_mem);
@@ -853,16 +925,6 @@ int main(int argc, char *argv[]) {
       return EXIT_SUCCESS;
     }
 
-    const struct kft_pump_context ctx = {
-        .ifp = stdin,
-        .ofp = ofp,
-        .esc = opt_escape,
-        .delim_st = opt_begin,
-        .delim_st_len = strlen(opt_begin),
-        .delim_en = opt_end,
-        .delim_en_len = strlen(opt_end),
-        .vars = &vars,
-    };
     return kft_pump(ctx);
   }
 
@@ -878,16 +940,8 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
       }
     }
-    const struct kft_pump_context ctx = {
-        .ifp = fp,
-        .ofp = ofp,
-        .esc = opt_escape,
-        .delim_st = opt_begin,
-        .delim_st_len = strlen(opt_begin),
-        .delim_en = opt_end,
-        .delim_en_len = strlen(opt_end),
-        .vars = &vars,
-    };
-    return kft_pump(ctx);
+    kft_input_t input = kft_input_init(fp, file, strlen(file), 0);
+    const kft_context_t ctx_input = kft_context_init_input(ctx, &input);
+    return kft_pump(ctx_input);
   }
 }
