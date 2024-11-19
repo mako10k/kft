@@ -62,6 +62,7 @@ static inline int ktf_run_var(const struct kft_pump_context ctx) {
   };
   const int ret = kft_pump(ctx_mem);
   if (ret != KFT_SUCCESS) {
+    fclose(stream);
     return KFT_FAILURE;
   }
   fclose(stream);
@@ -85,6 +86,98 @@ static inline int ktf_run_var(const struct kft_pump_context ctx) {
   }
   free(var);
   return KFT_SUCCESS;
+}
+
+static inline int ktf_run_write(const struct kft_pump_context ctx) {
+  char *filename = NULL;
+  size_t varlen = 0;
+  FILE *const stream = open_memstream(&filename, &varlen);
+  if (stream == NULL) {
+    return KFT_FAILURE;
+  }
+  const struct kft_pump_context ctx_mem = {
+      .ifp = ctx.ifp,
+      .ofp = stream,
+      .esc = ctx.esc,
+      .delim_st = ctx.delim_st,
+      .delim_st_len = ctx.delim_st_len,
+      .delim_en = ctx.delim_en,
+      .delim_en_len = ctx.delim_en_len,
+      .vars = ctx.vars,
+      .is_comment = 0,
+  };
+  const int ret = kft_pump(ctx_mem);
+  if (ret != KFT_SUCCESS) {
+    fclose(stream);
+    return KFT_FAILURE;
+  }
+  fclose(stream);
+  FILE *const ofp = fopen(filename, "w");
+  if (ofp == NULL) {
+    free(filename);
+    return KFT_FAILURE;
+  }
+  const struct kft_pump_context ctx_write = {
+      .ifp = ctx.ifp,
+      .ofp = ofp,
+      .esc = ctx.esc,
+      .delim_st = ctx.delim_st,
+      .delim_st_len = ctx.delim_st_len,
+      .delim_en = ctx.delim_en,
+      .delim_en_len = ctx.delim_en_len,
+      .vars = ctx.vars,
+      .is_comment = 0,
+  };
+  const int ret2 = kft_pump(ctx_write);
+  fclose(ofp);
+  free(filename);
+  return ret2;
+}
+
+static inline int ktf_run_read(const struct kft_pump_context ctx) {
+  char *filename = NULL;
+  size_t varlen = 0;
+  FILE *const stream = open_memstream(&filename, &varlen);
+  if (stream == NULL) {
+    return KFT_FAILURE;
+  }
+  const struct kft_pump_context ctx_mem = {
+      .ifp = ctx.ifp,
+      .ofp = stream,
+      .esc = ctx.esc,
+      .delim_st = ctx.delim_st,
+      .delim_st_len = ctx.delim_st_len,
+      .delim_en = ctx.delim_en,
+      .delim_en_len = ctx.delim_en_len,
+      .vars = ctx.vars,
+      .is_comment = 0,
+  };
+  const int ret = kft_pump(ctx_mem);
+  if (ret != KFT_SUCCESS) {
+    fclose(stream);
+    return KFT_FAILURE;
+  }
+  fclose(stream);
+  FILE *const ifp = fopen(filename, "r");
+  if (ifp == NULL) {
+    free(filename);
+    return KFT_FAILURE;
+  }
+  const struct kft_pump_context ctx_write = {
+      .ifp = ifp,
+      .ofp = ctx.ofp,
+      .esc = ctx.esc,
+      .delim_st = ctx.delim_st,
+      .delim_st_len = ctx.delim_st_len,
+      .delim_en = ctx.delim_en,
+      .delim_en_len = ctx.delim_en_len,
+      .vars = ctx.vars,
+      .is_comment = 0,
+  };
+  const int ret2 = kft_pump(ctx_write);
+  fclose(ifp);
+  free(filename);
+  return ret2;
 }
 
 static inline void *kft_pump_run(void *data) {
@@ -415,6 +508,20 @@ static inline int kft_pump(struct kft_pump_context ctx) {
           }
           return KFT_SUCCESS;
         }
+        case '>': { // WRITE TO FILE
+          const int ret = ktf_run_write(ctx);
+          if (ret != KFT_SUCCESS) {
+            return KFT_FAILURE;
+          }
+          continue;
+        }
+        case '<': { // READ FROM FILE
+          const int ret = ktf_run_read(ctx);
+          if (ret != KFT_SUCCESS) {
+            return KFT_FAILURE;
+          }
+          continue;
+        }
         default:
           ungetc(ch, ifp);
           break;
@@ -601,6 +708,10 @@ int main(int argc, char *argv[]) {
       printf("  %s!...%s              execute in default shell\n",
              KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
       printf("  %s-...%s              comment block\n", KFT_OPTDEF_BEGIN,
+             KFT_OPTDEF_END);
+      printf("  %s</path/to/file%s    include file\n", KFT_OPTDEF_BEGIN,
+             KFT_OPTDEF_END);
+      printf("  %s>/path/to/file%s    output to file\n", KFT_OPTDEF_BEGIN,
              KFT_OPTDEF_END);
       printf("\n");
       printf("*note* %s and %s are start and end delimiters\n",
