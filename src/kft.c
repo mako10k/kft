@@ -127,10 +127,8 @@ static inline int kft_exec(const struct kft_pump_context ctx,
     // pipefds[1] : write of (* parent -> child   ) -> close
     // pipefds[2] : read  of (  child  -> parent *) -> close
     // pipefds[3] : write of (* child  -> parent  ) -> STDOUT_FILENO
-    if (pipefds[0] != STDIN_FILENO) {
-      dup2(pipefds[0], STDIN_FILENO);
-      close(pipefds[0]);
-    }
+    char path_fd[strlen("/dev/fd/2147483647") + 1];
+    snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", pipefds[0]);
     close(pipefds[1]);
     close(pipefds[2]);
     if (pipefds[3] != STDOUT_FILENO) {
@@ -139,7 +137,17 @@ static inline int kft_exec(const struct kft_pump_context ctx,
     }
 
     // execute command
-    execvp(file, (char *const *)argv);
+    int argc = 0;
+    while (argv[argc] != NULL)
+      argc++;
+    char *argv_[argc + 2];
+    for (int i = 0; i < argc; i++) {
+      argv_[i] = (char *)argv[i];
+    }
+    argv_[argc] = path_fd;
+    argv_[argc + 1] = 0;
+
+    execvp(file, argv_);
     perror(file);
     exit(EXIT_FAILURE);
   }
