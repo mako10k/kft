@@ -1,4 +1,5 @@
 #include "kft.h"
+#include "kft_vars.h"
 #include <assert.h>
 #include <errno.h>
 #include <getopt.h>
@@ -10,8 +11,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
-#include "kft_vars.h"
 
 struct kft_pump_context {
   FILE *ifp;
