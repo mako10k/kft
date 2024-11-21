@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <wordexp.h>
 
 typedef struct kft_input {
   FILE *fp;
@@ -42,11 +43,34 @@ typedef struct kft_context {
   // ------------- VARIABLES
   kft_vars_t *vars;
 
-  // ------------- FLAGS
-  int is_comment;
+  // ------------- STATE
   int col_start;
   int row_start;
+
+  // ------------- FLAGS
+  unsigned int is_comment : 1;
+  unsigned int is_oneline : 1;
 } kft_context_t;
+
+static inline kft_context_t
+kft_context_init(kft_input_t *input, kft_output_t *output, int esc,
+                 const char *delim_st, const char *delim_en, kft_vars_t *vars) {
+  const kft_context_t ctx = {
+      .input = input,
+      .output = output,
+      .esc = esc,
+      .delim_st = delim_st,
+      .delim_st_len = strlen(delim_st),
+      .delim_en = delim_en,
+      .delim_en_len = strlen(delim_en),
+      .vars = vars,
+      .is_comment = 0,
+      .is_oneline = 0,
+      .col_start = 0,
+      .row_start = 0,
+  };
+  return ctx;
+}
 
 static inline kft_context_t kft_context_init_start(kft_context_t ctx) {
   kft_context_t ctx_ret = ctx;
@@ -72,6 +96,14 @@ static inline kft_context_t kft_context_init_output(kft_context_t ctx,
 static inline kft_context_t kft_context_init_comment(kft_context_t ctx) {
   kft_context_t ctx_ret = ctx;
   ctx_ret.is_comment = 1;
+  return ctx_ret;
+}
+
+static inline kft_context_t kft_context_init_oneline(kft_context_t ctx,
+                                                     kft_output_t *outputp) {
+  kft_context_t ctx_ret = ctx;
+  ctx_ret.output = outputp;
+  ctx_ret.is_oneline = 1;
   return ctx_ret;
 }
 
@@ -240,7 +272,7 @@ static inline void *kft_pump_run(void *data) {
 }
 
 static inline int kft_exec(const kft_context_t ctx, const char *const file,
-                           const char *const argv[]) {
+                           const char *const argv[], const int input_by_arg) {
   assert(ctx.input != NULL);
   assert(ctx.input->fp != NULL);
   assert(ctx.input->filename != NULL);
@@ -282,7 +314,12 @@ static inline int kft_exec(const kft_context_t ctx, const char *const file,
     // pipefds[2] : read  of (  child  -> parent *) -> close
     // pipefds[3] : write of (* child  -> parent  ) -> STDOUT_FILENO
     char path_fd[strlen("/dev/fd/2147483647") + 1];
-    snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", pipefds[0]);
+    if (input_by_arg) {
+      snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", pipefds[0]);
+    } else if (pipefds[0] != STDIN_FILENO) {
+      dup2(pipefds[0], STDIN_FILENO);
+      close(pipefds[0]);
+    }
     close(pipefds[1]);
     close(pipefds[2]);
     if (pipefds[3] != STDOUT_FILENO) {
@@ -291,17 +328,20 @@ static inline int kft_exec(const kft_context_t ctx, const char *const file,
     }
 
     // execute command
-    int argc = 0;
-    while (argv[argc] != NULL)
-      argc++;
-    char *argv_[argc + 2];
-    for (int i = 0; i < argc; i++) {
-      argv_[i] = (char *)argv[i];
+    if (input_by_arg) {
+      int argc = 0;
+      while (argv[argc] != NULL)
+        argc++;
+      char **argv_ = alloca((argc + 2) * sizeof(char *));
+      for (int i = 0; i < argc; i++) {
+        argv_[i] = (char *)argv[i];
+      }
+      argv_[argc] = path_fd;
+      argv_[argc + 1] = 0;
+      argv = (const char *const *)argv_;
     }
-    argv_[argc] = path_fd;
-    argv_[argc + 1] = 0;
 
-    execvp(file, argv_);
+    execvp(file, (char *const *)argv);
     perror(file);
     exit(EXIT_FAILURE);
   }
@@ -419,6 +459,9 @@ static inline int kft_pump(const kft_context_t ctx) {
       ctx.input->row++;
       col_prev = ctx.input->col;
       ctx.input->col = 0;
+      if (ctx.is_oneline) {
+        return KFT_EOL;
+      }
     } else {
       col_prev = ctx.input->col;
       ctx.input->col++;
@@ -459,6 +502,9 @@ static inline int kft_pump(const kft_context_t ctx) {
     } else if (shebang_pos == 2) {
       if (ch == '\n') {
         shebang_pos = -1;
+        if (ctx.is_oneline) {
+          return KFT_EOL;
+        }
       }
       continue;
     }
@@ -495,6 +541,9 @@ static inline int kft_pump(const kft_context_t ctx) {
             ctx.input->row++;
             col_prev = ctx.input->col;
             ctx.input->col = 0;
+            if (ctx.is_oneline) {
+              return KFT_EOL;
+            }
           } else {
             ungetc(ch, ctx.input->fp);
           }
@@ -526,6 +575,9 @@ static inline int kft_pump(const kft_context_t ctx) {
           ctx.input->row++;
           col_prev = ctx.input->col;
           ctx.input->col = 0;
+          if (ctx.is_oneline) {
+            return KFT_EOL;
+          }
         } else {
           col_prev = ctx.input->col;
           ctx.input->col++;
@@ -547,10 +599,47 @@ static inline int kft_pump(const kft_context_t ctx) {
             shell = KFT_OPTDEF_SHELL;
           }
           const char *const argv[] = {shell, NULL};
-          const int ret = kft_exec(ctx_start, shell, argv);
+          const int ret = kft_exec(ctx_start, shell, argv, 1);
           if (ret != 0) {
             return KFT_FAILURE;
           }
+          continue;
+        }
+        case '#': { // INTERNAL SHEBANG
+          char *linebuf = NULL;
+          size_t linebuflen = 0;
+          FILE *const stream = open_memstream(&linebuf, &linebuflen);
+          if (stream == NULL) {
+            return KFT_FAILURE;
+          }
+          char filename[] = "<shebang>";
+          kft_output_t output =
+              kft_output_init(stream, filename, sizeof(filename), 0);
+          const kft_context_t ctx_shebang =
+              kft_context_init_oneline(ctx_start, &output);
+          const int ret = kft_pump(ctx_shebang);
+          if (ret == KFT_FAILURE) {
+            free(linebuf);
+            return KFT_FAILURE;
+          }
+          fclose(stream);
+          const int like_shebang = *linebuf == '!';
+          const char *words = like_shebang ? linebuf + 1 : linebuf;
+          wordexp_t p;
+          const int ret_w = wordexp(words, &p, 0);
+          if (ret_w != 0) {
+            free(linebuf);
+            return KFT_FAILURE;
+          }
+          const int ret_e =
+              kft_exec(ctx_start, (const char *)p.we_wordv[0],
+                       (const char *const *)p.we_wordv, like_shebang);
+          free(linebuf);
+          if (ret_e != 0) {
+            wordfree(&p);
+            return KFT_FAILURE;
+          }
+          wordfree(&p);
           continue;
         }
         case '-': { // COMMENT BLOCK
@@ -763,17 +852,30 @@ int main(int argc, char *argv[]) {
       printf("  $%-21sdefault end delimiter\n", KFT_ENVNAME_END);
       printf("\n");
       printf("Templates:\n");
+      printf("\n");
+      printf("  variables:\n");
       printf("  %s$VAR%s              print VAR\n", KFT_OPTDEF_BEGIN,
              KFT_OPTDEF_END);
       printf("  %s$VAR=VALUE%s        assign VAR as VALUE\n", KFT_OPTDEF_BEGIN,
              KFT_OPTDEF_END);
+      printf("\n");
+      printf("  external programs:\n");
       printf("  %s!...%s              execute in default shell\n",
              KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
-      printf("  %s-...%s              comment block\n", KFT_OPTDEF_BEGIN,
-             KFT_OPTDEF_END);
+      printf("  %s#...%s              execute in program (stdin until %s)\n",
+             KFT_OPTDEF_BEGIN, KFT_OPTDEF_END, KFT_OPTDEF_END);
+      printf("  %s#!...%s             execute in program (add last argument "
+             "until %s)\n",
+             KFT_OPTDEF_BEGIN, KFT_OPTDEF_END, KFT_OPTDEF_END);
+      printf("\n");
+      printf("  redirects:\n");
       printf("  %s</path/to/file%s    include file\n", KFT_OPTDEF_BEGIN,
              KFT_OPTDEF_END);
       printf("  %s>/path/to/file%s    output to file\n", KFT_OPTDEF_BEGIN,
+             KFT_OPTDEF_END);
+      printf("\n");
+      printf("  misc:\n");
+      printf("  %s-...%s              comment block\n", KFT_OPTDEF_BEGIN,
              KFT_OPTDEF_END);
       printf("\n");
       printf("*note* %s and %s are start and end delimiters\n",
@@ -892,16 +994,8 @@ int main(int argc, char *argv[]) {
   kft_output_t output =
       kft_output_init(ofp, output_filename, sizeof(output_filename), 1);
 
-  const kft_context_t ctx = {
-      .input = &input,
-      .output = &output,
-      .esc = opt_escape,
-      .delim_st = opt_begin,
-      .delim_st_len = strlen(opt_begin),
-      .delim_en = opt_end,
-      .delim_en_len = strlen(opt_end),
-      .vars = &vars,
-  };
+  const kft_context_t ctx =
+      kft_context_init(&input, &output, opt_escape, opt_begin, opt_end, &vars);
 
   for (size_t i = 0; i < nevals; i++) {
     FILE *ifp_mem = fmemopen(opt_eval[i], strlen(opt_eval[i]), "r");

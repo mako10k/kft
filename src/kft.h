@@ -21,3 +21,4 @@
 
 #define KFT_SUCCESS 0
 #define KFT_FAILURE -1
+#define KFT_EOL '\n'
