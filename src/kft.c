@@ -1003,8 +1003,8 @@ int main(int argc, char *argv[]) {
       perror("fmemopen");
       return EXIT_FAILURE;
     }
-    kft_output_t output = {.fp = ofp, .filename = opt_eval[i]};
-    const kft_context_t ctx_eval = kft_context_init_output(ctx, &output);
+    kft_input_t input = kft_input_init(ifp_mem, opt_eval[i], strlen(opt_eval[i]), 0);
+    const kft_context_t ctx_eval = kft_context_init_input(ctx, &input);
 
     int ret = kft_pump(ctx_eval);
     fclose(ifp_mem);
