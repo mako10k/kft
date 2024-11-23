@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "program": "${workspaceFolder}/src/kft",
-            "args": ["HOGE=1"],
+            "args": ["-e", "{{$INPUT}}"],
             "cwd": "${workspaceFolder}",
             "setupCommands": [
                 {
