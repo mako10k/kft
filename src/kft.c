@@ -731,6 +731,44 @@ static inline int kft_pump(const kft_context_t ctx) {
   }
 }
 
+static inline int kft_inline_filename(kft_context_t ctx,
+                                      const char *const script,
+                                      char **filenamep, size_t *filenamelenp) {
+  char *filename = NULL;
+  size_t filenamelen = 0;
+  FILE *const stream = open_memstream(&filename, &filenamelen);
+  if (stream == NULL) {
+    return KFT_FAILURE;
+  }
+  const size_t ret = fwrite("inline:", 1, strlen("inline:"), stream);
+  if (ret < strlen("inline:")) {
+    fclose(stream);
+    free(filename);
+    return KFT_FAILURE;
+  }
+  for (unsigned int i = 0; i < strlen(script); i++) {
+    const int ch = script[i];
+    if (ch == ctx.esc || ch == ctx.delim_st[0] || ch == ctx.delim_en[0]) {
+      const int ret = fputc(ctx.esc, stream);
+      if (ret == EOF) {
+        fclose(stream);
+        free(filename);
+        return KFT_FAILURE;
+      }
+    }
+    const int ret = fputc(ch, stream);
+    if (ret == EOF) {
+      fclose(stream);
+      free(filename);
+      return KFT_FAILURE;
+    }
+  }
+  fclose(stream);
+  *filenamep = filename;
+  *filenamelenp = filenamelen;
+  return KFT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
   struct option long_options[] = {
       {"eval", required_argument, NULL, 'e'},
@@ -987,8 +1025,8 @@ int main(int argc, char *argv[]) {
     opt_end = KFT_OPTDEF_END;
   }
 
-  char input_filename[PATH_MAX] = "<stdin>";
-  char output_filename[PATH_MAX] = "<stdout>";
+  char input_filename[PATH_MAX] = "/dev/fd/0";
+  char output_filename[PATH_MAX] = "/dev/fd/1";
   kft_input_t input =
       kft_input_init(stdin, input_filename, sizeof(input_filename), 1);
   kft_output_t output =
@@ -1003,12 +1041,19 @@ int main(int argc, char *argv[]) {
       perror("fmemopen");
       return EXIT_FAILURE;
     }
-    kft_input_t input = kft_input_init(ifp_mem, opt_eval[i], strlen(opt_eval[i]), 0);
+    char *filename = NULL;
+    size_t filenamelen = 0;
+    const int ret =
+        kft_inline_filename(ctx, opt_eval[i], &filename, &filenamelen);
+    if (ret != 0) {
+      return EXIT_FAILURE;
+    }
+    kft_input_t input = kft_input_init(ifp_mem, filename, filenamelen, 0);
     const kft_context_t ctx_eval = kft_context_init_input(ctx, &input);
-
-    int ret = kft_pump(ctx_eval);
+    int ret2 = kft_pump(ctx_eval);
     fclose(ifp_mem);
-    if (ret != KFT_SUCCESS) {
+    free(filename);
+    if (ret2 != KFT_SUCCESS) {
       return EXIT_FAILURE;
     }
   }
