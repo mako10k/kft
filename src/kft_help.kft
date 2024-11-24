@@ -1,0 +1,46 @@
+Usage: {{$ARGV0}} [Options] [VarSpecs] [file ...]
+Options:
+  -e, --eval=STRING     evaluate STRING
+  -x, --export=NAME     variable NAME as current environment
+  -x, --export=NAME=VAL variable NAME as environment variable set with VAL
+  -x, --export=NAME=    variable NAME as environment variable but unset
+  -s, --shell=STRING    use shell STRING [$KFT_SHELL, $SHELL or /bin/sh]
+  -o, --output=FILE     write to FILE [stdout]
+  -E, --escape=CHAR     escape character [$KFT_ESCAPE or \]
+  -S, --start=STRING    start delimiter [$KFT_BEGIN or {{$KFT_BEGIN}}]
+  -R, --end=STRING      end delimite [$KFT_END or {{$KFT_END}}]
+  -h, --help            display this help and exit
+  -v, --version         output version information and exit
+
+VarSpecs:
+  NAME=VAL              set variable NAME with VAL
+  NAME=                 unset variable NAME
+
+*note* set or unset for environment variable when NAME is exported
+
+Environment Variables:
+  $KFT_SHELL            default shell
+  $SHELL                default shell (only no $KFT_SHELL is defined)
+  $KFT_ESCAPE           default escape character
+  $KFT_BEGIN            default start delimiter
+  $KFT_END              default end delimiter
+
+Templates:
+
+  variables:
+  \{{$VAR\}}              print VAR
+  \{{$VAR=VALUE\}}        assign VAR as VALUE
+
+  external programs:
+  \{{!...\}}              execute in default shell
+  \{{#...\}}              execute in program (stdin until \}})
+  \{{#!...\}}             execute in program (add last argument until \}})
+
+  redirects:
+  \{{</path/to/file\}}    include file
+  \{{>/path/to/file\}}    output to file
+
+  misc:
+  \{{-...\}}              comment block
+
+*note* \{{ and \}} are start and end delimiters
