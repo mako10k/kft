@@ -676,44 +676,44 @@ static inline int kft_pump(const kft_context_t ctx) {
         }
         }
       }
+    }
 
-      // flush pending delimiters
-      if ((delim_en_pos > 0 && !is_delim_en) &&
-          (delim_st_pos > 0 && !is_delim_st)) {
-        if (delim_en_pos > delim_st_pos) {
-          const size_t ret =
-              fwrite(ctx.delim_en, 1, delim_en_pos, ctx.output->fp);
-          if (ret < delim_en_pos) {
-            return KFT_FAILURE;
-          }
-        } else {
-          const size_t ret =
-              fwrite(ctx.delim_st, 1, delim_st_pos, ctx.output->fp);
-          if (ret < delim_st_pos) {
-            return KFT_FAILURE;
-          }
+    // flush pending delimiters
+    if ((delim_en_pos > 0 && !is_delim_en) &&
+        (delim_st_pos > 0 && !is_delim_st)) {
+      if (delim_en_pos > delim_st_pos) {
+        const size_t ret =
+            fwrite(ctx.delim_en, 1, delim_en_pos, ctx.output->fp);
+        if (ret < delim_en_pos) {
+          return KFT_FAILURE;
         }
-        delim_en_pos = 0;
-        delim_st_pos = 0;
-      } else if (delim_en_pos > 0 && !is_delim_en) {
-        if (delim_st_pos < delim_en_pos) {
-          const size_t ret = fwrite(
-              ctx.delim_en, 1, delim_en_pos - delim_st_pos, ctx.output->fp);
-          if (ret < delim_en_pos - delim_st_pos) {
-            return KFT_FAILURE;
-          }
+      } else {
+        const size_t ret =
+            fwrite(ctx.delim_st, 1, delim_st_pos, ctx.output->fp);
+        if (ret < delim_st_pos) {
+          return KFT_FAILURE;
         }
-        delim_en_pos = 0;
-      } else if (delim_st_pos > 0 && !is_delim_st) {
-        if (delim_en_pos < delim_st_pos) {
-          const size_t ret = fwrite(
-              ctx.delim_st, 1, delim_st_pos - delim_en_pos, ctx.output->fp);
-          if (ret < delim_st_pos - delim_en_pos) {
-            return KFT_FAILURE;
-          }
-        }
-        delim_st_pos = 0;
       }
+      delim_en_pos = 0;
+      delim_st_pos = 0;
+    } else if (delim_en_pos > 0 && !is_delim_en) {
+      if (delim_st_pos < delim_en_pos) {
+        const size_t ret = fwrite(ctx.delim_en, 1, delim_en_pos - delim_st_pos,
+                                  ctx.output->fp);
+        if (ret < delim_en_pos - delim_st_pos) {
+          return KFT_FAILURE;
+        }
+      }
+      delim_en_pos = 0;
+    } else if (delim_st_pos > 0 && !is_delim_st) {
+      if (delim_en_pos < delim_st_pos) {
+        const size_t ret = fwrite(ctx.delim_st, 1, delim_st_pos - delim_en_pos,
+                                  ctx.output->fp);
+        if (ret < delim_st_pos - delim_en_pos) {
+          return KFT_FAILURE;
+        }
+      }
+      delim_st_pos = 0;
     }
 
     if (is_delim_en || is_delim_st) {
