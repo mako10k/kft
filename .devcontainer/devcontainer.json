@@ -13,7 +13,8 @@
 				"libtool",
 				"pkg-config",
 				"make",
-				"gdb"
+				"gdb",
+				"libgc-dev"
 			]
 		},
 		"ghcr.io/devcontainers/features/github-cli:1": {}

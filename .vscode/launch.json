@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "program": "${workspaceFolder}/src/kft",
-            "args": ["-e", "{{$INPUT}}"],
+            "args": ["test/input.kft"],
             "cwd": "${workspaceFolder}",
             "setupCommands": [
                 {

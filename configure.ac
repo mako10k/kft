@@ -11,7 +11,10 @@ AC_PROG_CC
 
 AM_INIT_AUTOMAKE([foreign])
 
+AC_USE_SYSTEM_EXTENSIONS
+
 # Checks for libraries.
+PKG_CHECK_MODULES(GC, [bdw-gc])
 
 # Checks for header files.
 AC_CHECK_HEADERS([unistd.h])

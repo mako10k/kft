@@ -4,6 +4,9 @@
 #include "config.h"
 #endif
 
+#include <stdbool.h>
+#include <stdlib.h>
+
 #define KFT_ENVNAME_PREFIX "KFT_"
 #define KFT_ENVNAME_SHELL KFT_ENVNAME_PREFIX "SHELL"
 #define KFT_ENVNAME_SHELL_RAW "SHELL"
@@ -19,6 +22,6 @@
 #define KFT_VARNAME_INPUT "INPUT"
 #define KFT_VARNAME_OUTPUT "OUTPUT"
 
+#define KFT_FAILURE (-1)
 #define KFT_SUCCESS 0
-#define KFT_FAILURE -1
-#define KFT_EOL '\n'
+#define KFT_EOL 1
