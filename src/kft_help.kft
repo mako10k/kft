@@ -4,8 +4,8 @@ Options:
   -s, --shell=STRING    use shell STRING [$KFT_SHELL, $SHELL or /bin/sh]
   -o, --output=FILE     write to FILE [stdout]
   -E, --escape=CHAR     escape character [$KFT_ESCAPE or \]
-  -S, --start=STRING    start delimiter [$KFT_BEGIN or {{$KFT_BEGIN}}]
-  -R, --end=STRING      end delimite [$KFT_END or {{$KFT_END}}]
+  -S, --start=STRING    start delimiter [$KFT_BEGIN or \{{$KFT_BEGIN\}}]
+  -R, --end=STRING      end delimite [$KFT_END or \{{$KFT_END\}}]
   -h, --help            display this help and exit
   -v, --version         output version information and exit
 
@@ -16,17 +16,18 @@ VarSpecs:
 *note* set or unset for environment variable when NAME is exported
 
 Environment Variables:
-  $KFT_SHELL            default shell
+  $KFT_SHELL            shell command (run this when \{{!...\}})
+  $KFT_ESCAPE           escape character (invalidate ESCAPE BEGIN END)
+  $KFT_BEGIN            start delimiter
+  $KFT_END              end delimiter
+
   $SHELL                default shell (only no $KFT_SHELL is defined)
-  $KFT_ESCAPE           default escape character
-  $KFT_BEGIN            default start delimiter
-  $KFT_END              default end delimiter
 
 Templates:
 
   variables:
-  \{{$VAR\}}              print VAR
-  \{{$VAR=VALUE\}}        assign VAR as VALUE
+  \{{$VAR\}}              expand $VAR
+  \{{$VAR=VALUE\}}        set $VAR as VALUE
 
   special variables:
   $INPUT                input filename
@@ -34,17 +35,22 @@ Templates:
   $OFFSET               file offset
 
   external programs:
-  \{{!...\}}              execute in default shell
-  \{{#...\}}              execute in program (stdin until \}})
-  \{{#!...\}}             execute in program (add last argument until \}})
+  \{{!SCRIPT\}}           execute SCRIPT by shell
+                            shell is $KFT_SHELL, $SHELL or /bin/sh
+  \{{#CMD [ARG ...]\}}    run CMD (stdin unchanged)
+  \{{#CMD [ARG ...]
+  ...\}}                 run CMD (stdin until next \}})
+  \{{#!CMD [ARG ...]\}}   run CMD (add last argument to open stdin)
+  \{{#CMD [ARG ...]
+  ...\}}                 run CMD (add last argument to open until \}})
 
   redirects:
-  \{{</path/to/file\}}    include file
-  \{{>/path/to/file\}}    output to file
+  \{{</path/to/file\}}    include file   (same as \{{$INPUT=/path/to/file\}})
+  \{{>/path/to/file\}}    output to file (same as \{{$OUTPUT=/path/to/file\}})
 
   misc:
-  \{{\{TAG\}}              set TAG
-  \{{\}TAG\}}              goto TAG
+  {\{{VAR\}}              get current file position to VAR
+  {\{}VAR\}}              set current file position from VAR
   \{{-...\}}              comment block
 
 *note* \{{ and \}} are start and end delimiters
