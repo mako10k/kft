@@ -38,15 +38,15 @@ typedef struct kft_context {
   int *preturn_by;
 } kft_context_t;
 
-static inline const char *kft_fd_to_path(int fd, char *buf, size_t buflen) {
-  char path_fd[strlen("/dev/fd/2147483647") + 1];
+static const char *kft_fd_to_path(int fd, char *buf, size_t buflen) {
+  char path_fd[32];
   snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", fd);
-  const ssize_t ret = readlink(path_fd, buf, buflen);
-  if (ret != -1) {
-    buf[ret] = '\0';
-    return buf;
+  ssize_t ret = readlink(path_fd, buf, buflen);
+  if (ret == -1) {
+    return NULL;
   }
-  return NULL;
+  buf[ret] = '\0';
+  return buf;
 }
 
 #define min(a, b)                                                              \
