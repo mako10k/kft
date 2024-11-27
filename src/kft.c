@@ -544,10 +544,27 @@ static inline int kft_run(FILE *fp_in, const char *filename_in, size_t *prow_in,
           int like_shebang = *linebuf == '!';
           char *words = like_shebang ? linebuf + 1 : linebuf;
           wordexp_t p;
-          ret = wordexp(words, &p, 0);
-          if (ret != KFT_SUCCESS) {
+          int ret2 = wordexp(words, &p, 0);
+          if (ret2 != KFT_SUCCESS) {
             free(linebuf);
             return KFT_FAILURE;
+          }
+          if (ret != KFT_EOL) {
+            FILE *fp_in2 = stdin;
+            char filename_in2[PATH_MAX] = "/dev/fd/0";
+            int fd_in2 = fileno(fp_in2);
+            kft_fd_to_path(fd_in2, filename_in2, sizeof(filename_in2));
+            size_t row_in2 = 0;
+            size_t col_in2 = 0;
+            ret = kft_exec(fp_in2, filename_in2, &row_in2, &col_in2, fp_out,
+                           filename_out, ch_esc, delim_st, delim_en, flags, pch,
+                           p.we_wordv[0], p.we_wordv, 0);
+            wordfree(&p);
+            free(linebuf);
+            if (ret != KFT_SUCCESS) {
+              return KFT_FAILURE;
+            }
+            continue;
           }
           ret = kft_exec(fp_in, filename_in, &row_in, &col_in, fp_out,
                          filename_out, ch_esc, delim_st, delim_en, flags, pch,
@@ -567,8 +584,8 @@ static inline int kft_run(FILE *fp_in, const char *filename_in, size_t *prow_in,
           if (fp_tag == NULL) {
             return KFT_FAILURE;
           }
-          ret = kft_run(fp_in, filename_in, &row_in, &col_in, fp_tag,
-                        "<tag>", ch_esc, delim_st, delim_en, flags, pch);
+          ret = kft_run(fp_in, filename_in, &row_in, &col_in, fp_tag, "<tag>",
+                        ch_esc, delim_st, delim_en, flags, pch);
           if (ret != KFT_SUCCESS) {
             fclose(fp_tag);
             free(tag);
@@ -592,8 +609,8 @@ static inline int kft_run(FILE *fp_in, const char *filename_in, size_t *prow_in,
           if (fp_tag == NULL) {
             return KFT_FAILURE;
           }
-          ret = kft_run(fp_in, filename_in, &row_in, &col_in, fp_tag,
-                        "<tag>", ch_esc, delim_st, delim_en, flags, pch);
+          ret = kft_run(fp_in, filename_in, &row_in, &col_in, fp_tag, "<tag>",
+                        ch_esc, delim_st, delim_en, flags, pch);
           if (ret != KFT_SUCCESS) {
             fclose(fp_tag);
             free(tag);
@@ -793,13 +810,14 @@ int main(int argc, char *argv[]) {
     case 'h': {
       size_t row_in = 0;
       size_t col_in = 0;
-      FILE *fp_in = fopen(  DATADIR "/kft_help.kft", "r");
+      FILE *fp_in = fopen(DATADIR "/kft_help.kft", "r");
       if (fp_in == NULL) {
-        perror( DATADIR "/kft_help.kft");
+        perror(DATADIR "/kft_help.kft");
         return EXIT_FAILURE;
       }
-      kft_run(fp_in, DATADIR "/kft_help.kft", &row_in, &col_in, stdout, "<stdout>",
-              KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END, 0, NULL);
+      kft_run(fp_in, DATADIR "/kft_help.kft", &row_in, &col_in, stdout,
+              "<stdout>", KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END,
+              0, NULL);
       return 0;
     }
 
