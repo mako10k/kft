@@ -4,6 +4,10 @@
 #include "config.h"
 #endif
 
+#ifndef DATADIR
+#define DATADIR "/usr/local/share"
+#endif
+
 #include <stdbool.h>
 #include <stdlib.h>
 
@@ -21,6 +25,7 @@
 
 #define KFT_VARNAME_INPUT "INPUT"
 #define KFT_VARNAME_OUTPUT "OUTPUT"
+#define KFT_VARNAME_OFFSET "OFFSET"
 
 #define KFT_FAILURE (-1)
 #define KFT_SUCCESS 0

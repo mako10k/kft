@@ -1,9 +1,6 @@
 Usage: {{$ARGV0}} [Options] [VarSpecs] [file ...]
 Options:
   -e, --eval=STRING     evaluate STRING
-  -x, --export=NAME     variable NAME as current environment
-  -x, --export=NAME=VAL variable NAME as environment variable set with VAL
-  -x, --export=NAME=    variable NAME as environment variable but unset
   -s, --shell=STRING    use shell STRING [$KFT_SHELL, $SHELL or /bin/sh]
   -o, --output=FILE     write to FILE [stdout]
   -E, --escape=CHAR     escape character [$KFT_ESCAPE or \]
@@ -31,6 +28,11 @@ Templates:
   \{{$VAR\}}              print VAR
   \{{$VAR=VALUE\}}        assign VAR as VALUE
 
+  special variables:
+  $INPUT                input filename
+  $OUTPUT               output filename
+  $OFFSET               file offset
+
   external programs:
   \{{!...\}}              execute in default shell
   \{{#...\}}              execute in program (stdin until \}})
@@ -41,6 +43,8 @@ Templates:
   \{{>/path/to/file\}}    output to file
 
   misc:
+  \{{\{TAG\}}              set TAG
+  \{{\}TAG\}}              goto TAG
   \{{-...\}}              comment block
 
 *note* \{{ and \}} are start and end delimiters
