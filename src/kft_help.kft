@@ -32,7 +32,6 @@ Templates:
   special variables:
   $INPUT                input filename
   $OUTPUT               output filename
-  $OFFSET               file offset
 
   external programs:
   \{{!SCRIPT\}}           execute SCRIPT by shell
@@ -49,8 +48,8 @@ Templates:
   \{{>/path/to/file\}}    output to file (same as \{{$OUTPUT=/path/to/file\}})
 
   misc:
-  {\{{VAR\}}              get current file position to VAR
-  {\{}VAR\}}              set current file position from VAR
+  {\{{TAG\}}              get current file position to TAG
+  {\{}TAG\}}              set current file position from TAG
   \{{-...\}}              comment block
 
 *note* \{{ and \}} are start and end delimiters

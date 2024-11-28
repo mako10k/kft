@@ -1,4 +1,5 @@
 #include "kft.h"
+#include "kft_io.h"
 #include <assert.h>
 #include <errno.h>
 #include <getopt.h>
@@ -25,32 +26,28 @@ typedef struct kft_context {
   const char *filename_in;
   size_t *prow_in;
   size_t *pcol_in;
+  char **ppend;
+  size_t *ppendposr;
+  size_t *ppendposw;
+  size_t *ppendsize;
   FILE *fp_out;
   const char *filename_out;
 
   // ------------- CONFIG
   int ch_esc;
+  int *pesclen;
   const char *delim_st;
   const char *delim_en;
 
   // ------------- FLAGS
   int flags;
-  int *preturn_by;
 } kft_context_t;
 
-/**
- * Converts a file descriptor to its corresponding file path.
- *
- * @param fd The file descriptor to be converted.
- * @param buf A buffer to store the resulting file path.
- * @param buflen The length of the buffer.
- * @return A pointer to the buffer containing the file path, or NULL if an error
- * occurs.
- */
-static const char *kft_fd_to_path(int fd, char *buf, size_t buflen) {
+static const char *kft_fd_to_path(const int fd, char *const buf,
+                                  const size_t buflen) {
   char path_fd[32];
   snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", fd);
-  ssize_t ret = readlink(path_fd, buf, buflen);
+  const ssize_t ret = readlink(path_fd, buf, buflen);
   if (ret == -1) {
     return NULL;
   }
@@ -58,104 +55,97 @@ static const char *kft_fd_to_path(int fd, char *buf, size_t buflen) {
   return buf;
 }
 
-/**
- * @brief Run KFT script
- * @param fp_in Input file stream
- * @param filename_in Input file name
- * @param prow_in Pointer to row number of input file
- * @param pcol_in Pointer to column number of input file
- * @param fp_out Output file stream
- * @param filename_out Output file name
- * @param ch_esc Escape character
- * @param delim_st Start delimiter
- * @param delim_en End delimiter
- * @param flags Flags
- * @param preturn_by Pointer to return by
- * @return KFT_SUCCESS on success, KFT_FAILURE on failure, KFT_EOL on end of
- * line
- */
-static int kft_run(FILE *fp_in, const char *filename_in, size_t *prow_in,
-                   size_t *pcol_in, FILE *fp_out, const char *filename_out,
-                   int ch_esc, const char delim_st[], const char delim_en[],
-                   int flags, int *preturn_by);
+static inline int
+kft_run(FILE *const fp_in, const char *restrict const filename_in,
+        size_t *restrict const prow_in, size_t *restrict const pcol_in,
+        char **restrict const ppend, size_t *restrict const ppendposr,
+        size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+        FILE *const fp_out, const char *restrict const filename_out,
+        const int ch_esc, int *restrict const pesclen,
+        const char *restrict const delim_st,
+        const char *restrict const delim_en, const int flags);
 
-/**
- * @brief Reads a variable from the input file and processes it.
- *
- * This function reads a variable with the given name and value from the input
- * file stream and performs necessary processing.
- *
- * @param name The name of the variable to read.
- * @param value The value of the variable to read.
- * @param fp_in The input file stream from which to read the variable.
- * @param filename_in The name of the input file.
- * @param prow_in The row number of the input file.
- * @param pcol_in The column number of the input file.
- * @return An integer indicating the success or failure of the operation.
- */
-static int kft_run_read_var(const char *name, const char *value, FILE *fp_in,
-                            const char *filename_in, size_t *prow_in,
-                            size_t *pcol_in, FILE *fp_out,
-                            const char *filename_out, int ch_esc,
-                            const char delim_st[], const char delim_en[],
-                            int flags, int *preturn_by) {
+static int kft_run_read_var_input(const char *restrict const value,
+                                  FILE *restrict const fp_out,
+                                  const char *restrict const filename_out,
+                                  const int ch_esc,
+                                  const char *restrict const delim_st,
+                                  const char *restrict const delim_en,
+                                  const int flags) {
+  FILE *restrict const fp_in = fopen(value, "r");
+  if (fp_in == NULL) {
+    return KFT_FAILURE;
+  }
+  char filename_in[PATH_MAX] = "/dev/fd/0";
+  const int fd_in = fileno(fp_in);
+  kft_fd_to_path(fd_in, filename_in, sizeof(filename_in));
+  size_t row_in = 0;
+  size_t col_in = 0;
+  char *pend = NULL;
+  size_t pendposr = 0;
+  size_t pendposw = 0;
+  size_t pendsize = 0;
+  int esclen = 0;
+  const int ret = kft_run(fp_in, filename_in, &row_in, &col_in, &pend,
+                          &pendposr, &pendposw, &pendsize, fp_out, filename_out,
+                          ch_esc, &esclen, delim_st, delim_en, flags);
+  fclose(fp_in);
+  free(pend);
+  return ret;
+}
+
+static int kft_run_read_var_output(
+    const char *restrict const value, FILE *restrict const fp_in,
+    const char *restrict const filename_in, size_t *restrict const prow_in,
+    size_t *restrict const pcol_in, char **restrict const ppend,
+    size_t *restrict const ppendposr, size_t *restrict const ppendposw,
+    size_t *restrict const ppendsize, const int ch_esc,
+    int *restrict const pesclen, const char *restrict const delim_st,
+    const char *restrict const delim_en, const int flags) {
+  FILE *const fp_out = fopen(value, "w");
+  if (fp_out == NULL) {
+    return KFT_FAILURE;
+  }
+  char filename_out[PATH_MAX] = "/dev/fd/1";
+  const int fd_out = fileno(fp_out);
+  kft_fd_to_path(fd_out, filename_out, sizeof(filename_out));
+  const int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, ppend,
+                          ppendposr, ppendposw, ppendsize, fp_out, filename_out,
+                          ch_esc, pesclen, delim_st, delim_en, flags);
+  fclose(fp_out);
+  return ret;
+}
+
+static int kft_run_read_var(
+    const char *restrict const name, const char *restrict const value,
+    FILE *restrict const fp_in, const char *restrict const filename_in,
+    size_t *restrict const prow_in, size_t *restrict const pcol_in,
+    char **restrict const ppend, size_t *restrict const ppendposr,
+    size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+    FILE *restrict const fp_out, const char *restrict const filename_out,
+    const int ch_esc, int *restrict const pesclen,
+    const char *restrict const delim_st, const char *restrict const delim_en,
+    const int flags) {
   // SPECIAL NAME
   if (strcmp(KFT_VARNAME_INPUT, name) == 0) {
-    FILE *fp_in2 = fopen(value, "r");
-    if (fp_in2 == NULL) {
+    const int ret = kft_run_read_var_input(value, fp_out, filename_out, ch_esc,
+                                           delim_st, delim_en, flags);
+    if (ret == KFT_FAILURE) {
       fprintf(stderr, "%s:%zu:%zu: $%s=%s: %m\n", filename_in, *prow_in + 1,
               *pcol_in, name, value);
       return KFT_FAILURE;
     }
-    char filename_in2[PATH_MAX] = "/dev/fd/0";
-    int fd_in2 = fileno(fp_in2);
-    kft_fd_to_path(fd_in2, filename_in2, sizeof(filename_in2));
-    size_t row_in2 = 0;
-    size_t col_in2 = 0;
-    int ret =
-        kft_run(fp_in2, filename_in2, &row_in2, &col_in2, fp_out, filename_out,
-                ch_esc, delim_st, delim_en, flags, preturn_by);
-    fclose(fp_in2);
     return ret;
   } else if (strcmp(KFT_VARNAME_OUTPUT, name) == 0) {
-    FILE *fp_out2 = fopen(value, "w");
-    if (fp_out2 == NULL) {
+    const int ret = kft_run_read_var_output(
+        value, fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+        ppendposw, ppendsize, ch_esc, pesclen, delim_st, delim_en, flags);
+    if (ret == KFT_FAILURE) {
       fprintf(stderr, "%s:%zu:%zu: $%s=%s: %m\n", filename_in, *prow_in + 1,
               *pcol_in, name, value);
       return KFT_FAILURE;
     }
-    char filename_out2[PATH_MAX] = "/dev/fd/1";
-    int fd_out2 = fileno(fp_out2);
-    kft_fd_to_path(fd_out2, filename_out2, sizeof(filename_out2));
-    int ret =
-        kft_run(fp_in, filename_in, prow_in, pcol_in, fp_out2, filename_out2,
-                ch_esc, delim_st, delim_en, flags, preturn_by);
-    fclose(fp_out2);
     return ret;
-  } else if (strcmp(KFT_VARNAME_OFFSET, name) == 0) {
-    char *p;
-    long pos = strtol(value, &p, 0);
-    if (*p != '\0') {
-      return KFT_FAILURE;
-    }
-    int ret = fseek(fp_in, pos, SEEK_SET);
-    if (ret != 0) {
-      fprintf(stderr, "%s:%zu:%zu: $%s: %m\n", filename_in, *prow_in + 1,
-              *pcol_in, KFT_VARNAME_OFFSET);
-      return KFT_FAILURE;
-    }
-  } else if (strcmp(KFT_VARNAME_OFFSET, name) == 0) {
-    char *p;
-    long pos = strtol(value, &p, 0);
-    if (*p != '\0') {
-      return KFT_FAILURE;
-    }
-    int ret = fseek(fp_in, pos, SEEK_SET);
-    if (ret != 0) {
-      fprintf(stderr, "%s:%zu:%zu: $%s: %m\n", filename_in, *prow_in + 1,
-              *pcol_in, KFT_VARNAME_OFFSET);
-      return KFT_FAILURE;
-    }
   }
   int ret = setenv(name, value, 1);
   if (ret != 0) {
@@ -199,18 +189,24 @@ static int kft_run_write_var(const char *name, FILE *fp_in,
   return KFT_SUCCESS;
 }
 
-static int ktf_run_var(FILE *fp_in, const char *filename_in, size_t *prow_in,
-                       size_t *pcol_in, FILE *fp_out, const char *filename_out,
-                       int ch_esc, const char delim_st[], const char delim_en[],
-                       int flags, int *preturn_by) {
+static int
+ktf_run_var(FILE *restrict const fp_in, const char *restrict const filename_in,
+            size_t *restrict const prow_in, size_t *restrict const pcol_in,
+            char **restrict const ppend, size_t *restrict const ppendposr,
+            size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+            FILE *restrict const fp_out,
+            const char *restrict const filename_out, const int ch_esc,
+            int *restrict const pesclen, const char *restrict const delim_st,
+            const char *restrict const delim_en, const int flags) {
   char *name = NULL;
   size_t namelen = 0;
-  FILE *fp_name = open_memstream(&name, &namelen);
+  FILE *const fp_name = open_memstream(&name, &namelen);
   if (fp_name == NULL) {
     return KFT_FAILURE;
   }
-  int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, fp_name, "<inline>",
-                    ch_esc, delim_st, delim_en, flags, preturn_by);
+  const int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, ppend,
+                          ppendposr, ppendposw, ppendsize, fp_name, "<inline>",
+                          ch_esc, pesclen, delim_st, delim_en, flags);
   if (ret != KFT_SUCCESS) {
     fclose(fp_name);
     free(name);
@@ -220,33 +216,38 @@ static int ktf_run_var(FILE *fp_in, const char *filename_in, size_t *prow_in,
   char *value = strchr(name, '=');
   if (value != NULL) {
     *(value++) = '\0';
-    ret = kft_run_read_var(name, value, fp_in, filename_in, prow_in, pcol_in,
-                           fp_out, filename_out, ch_esc, delim_st, delim_en,
-                           flags, preturn_by);
-    if (ret != KFT_SUCCESS) {
-      free(name);
-      return KFT_FAILURE;
-    }
+    const int ret = kft_run_read_var(name, value, fp_in, filename_in, prow_in,
+                                     pcol_in, ppend, ppendposr, ppendposw,
+                                     ppendsize, fp_out, filename_out, ch_esc,
+                                     pesclen, delim_st, delim_en, flags);
+    free(name);
+    return ret;
   } else {
-    ret = kft_run_write_var(name, fp_in, filename_in, prow_in, pcol_in, fp_out,
-                            filename_out);
+    const int ret = kft_run_write_var(name, fp_in, filename_in, prow_in,
+                                      pcol_in, fp_out, filename_out);
+    free(name);
+    return ret;
   }
-  free(name);
-  return KFT_SUCCESS;
 }
 
-static inline int ktf_run_write(FILE *fp_in, const char *filename_in,
-                                size_t *prow_in, size_t *pcol_in, int ch_esc,
-                                const char delim_st[], const char delim_en[],
-                                int flags, int *preturn_by) {
+static inline int
+ktf_run_write(FILE *restrict const fp_in,
+              const char *restrict const filename_in,
+              size_t *restrict const prow_in, size_t *restrict const pcol_in,
+              char **restrict const ppend, size_t *restrict const ppendposr,
+              size_t *restrict const ppendposw,
+              size_t *restrict const ppendsize, const int ch_esc,
+              int *restrict const pesclen, const char *restrict const delim_st,
+              const char *restrict const delim_en, int flags) {
   char *filename = NULL;
   size_t filenamelen = 0;
   FILE *fp_filename = open_memstream(&filename, &filenamelen);
   if (fp_filename == NULL) {
     return KFT_FAILURE;
   }
-  int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, fp_filename,
-                    "<inline>", ch_esc, delim_st, delim_en, flags, preturn_by);
+  int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                    ppendposw, ppendsize, fp_filename, "<inline>", ch_esc,
+                    pesclen, delim_st, delim_en, flags);
   if (ret != KFT_SUCCESS) {
     fclose(fp_filename);
     free(filename);
@@ -258,27 +259,32 @@ static inline int ktf_run_write(FILE *fp_in, const char *filename_in,
     free(filename);
     return KFT_FAILURE;
   }
-  const int trt =
-      kft_run(fp_in, filename_in, prow_in, pcol_in, fp_write, filename, ch_esc,
-              delim_st, delim_en, flags, preturn_by);
+  const int trt = kft_run(fp_in, filename_in, prow_in, pcol_in, ppend,
+                          ppendposr, ppendposw, ppendsize, fp_write, filename,
+                          ch_esc, pesclen, delim_st, delim_en, flags);
   fclose(fp_write);
   free(filename);
   return trt;
 }
 
-static inline int ktf_run_read(FILE *fp_in, const char *filename_in,
-                               size_t *prow_in, size_t *pcol_in, FILE *fp_out,
-                               const char *filename_out, int ch_esc,
-                               const char delim_st[], const char delim_en[],
-                               int flags, int *preturn_by) {
+static inline int
+ktf_run_read(FILE *restrict const fp_in, const char *restrict const filename_in,
+             size_t *restrict const prow_in, size_t *restrict const pcol_in,
+             char **restrict const ppend, size_t *restrict const ppendposr,
+             size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+             FILE *restrict const fp_out, const char *filename_out,
+             const int ch_esc, int *restrict const pesclen,
+             const char *restrict const delim_st,
+             const char *restrict const delim_en, const int flags) {
   char *filename = NULL;
   size_t filenamelen = 0;
   FILE *fp_filename = open_memstream(&filename, &filenamelen);
   if (fp_filename == NULL) {
     return KFT_FAILURE;
   }
-  int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, fp_filename,
-                    "<inline>", ch_esc, delim_st, delim_en, flags, preturn_by);
+  int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                    ppendposw, ppendsize, fp_filename, "<inline>", ch_esc,
+                    pesclen, delim_st, delim_en, flags);
   if (ret != KFT_SUCCESS) {
     fclose(fp_filename);
     free(filename);
@@ -290,8 +296,9 @@ static inline int ktf_run_read(FILE *fp_in, const char *filename_in,
     free(filename);
     return KFT_FAILURE;
   }
-  ret = kft_run(fp_read, filename, prow_in, pcol_in, fp_out, filename_out,
-                ch_esc, delim_st, delim_en, flags, preturn_by);
+  ret = kft_run(fp_read, filename, prow_in, pcol_in, ppend, ppendposr,
+                ppendposw, ppendsize, fp_out, filename_out, ch_esc, pesclen,
+                delim_st, delim_en, flags);
   fclose(fp_read);
   free(filename);
   return ret;
@@ -300,8 +307,9 @@ static inline int ktf_run_read(FILE *fp_in, const char *filename_in,
 static inline void *kft_pump_run(void *data) {
   kft_context_t *ctx = data;
   int ret = kft_run(ctx->fp_in, ctx->filename_in, ctx->prow_in, ctx->pcol_in,
-                    ctx->fp_out, ctx->filename_out, ctx->ch_esc, ctx->delim_st,
-                    ctx->delim_en, ctx->flags, ctx->preturn_by);
+                    ctx->ppend, ctx->ppendposr, ctx->ppendposw, ctx->ppendsize,
+                    ctx->fp_out, ctx->filename_out, ctx->ch_esc, ctx->pesclen,
+                    ctx->delim_st, ctx->delim_en, ctx->flags);
   if (ret != KFT_SUCCESS) {
     fclose(ctx->fp_out);
     return (void *)(intptr_t)KFT_FAILURE;
@@ -310,22 +318,16 @@ static inline void *kft_pump_run(void *data) {
   return (void *)(intptr_t)KFT_SUCCESS;
 }
 
-static inline int kft_exec(FILE *fp_in, const char *filename_in,
-                           size_t *prow_in, size_t *pcol_in, FILE *fp_out,
-                           const char *filename_out, int ch_esc,
-                           const char delim_st[], const char delim_en[],
-                           int flags, int *preturn_by, char *file, char *argv[],
-                           const int input_by_arg) {
-  assert(fp_in != NULL);
-  assert(filename_in != NULL);
-  assert(prow_in != NULL);
-  assert(pcol_in != NULL);
-  assert(fp_out != NULL);
-  assert(filename_out != NULL);
-  assert(file != NULL);
-  assert(argv != NULL);
-  assert(argv[0] != NULL);
-
+static inline int
+kft_exec(FILE *restrict const fp_in, const char *restrict const filename_in,
+         size_t *restrict const prow_in, size_t *restrict const pcol_in,
+         char **restrict const ppend, size_t *restrict const ppendposr,
+         size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+         FILE *restrict const fp_out, const char *restrict const filename_out,
+         const int ch_esc, int *restrict const pesclen,
+         const char *restrict const delim_st, const char delim_en[],
+         const int flags, const char *const file, char *argv[],
+         const int input_by_arg) {
   // DEFAULT STREAM
   int pipefds[4];
   // pipefds[0] : read  of (  parent -> child  *)
@@ -409,13 +411,17 @@ static inline int kft_exec(FILE *fp_in, const char *filename_in,
   ctx.filename_in = filename_in;
   ctx.prow_in = prow_in;
   ctx.pcol_in = pcol_in;
+  ctx.ppend = ppend;
+  ctx.ppendposr = ppendposr;
+  ctx.ppendposw = ppendposw;
+  ctx.ppendsize = ppendsize;
   ctx.fp_out = ofp_new;
   ctx.filename_out = filename_out;
   ctx.ch_esc = ch_esc;
+  ctx.pesclen = pesclen;
   ctx.delim_st = delim_st;
   ctx.delim_en = delim_en;
   ctx.flags = flags;
-  ctx.preturn_by = preturn_by;
 
   pthread_t thread;
   const int ret = pthread_create(&thread, NULL, kft_pump_run, (void *)&ctx);
@@ -476,282 +482,297 @@ static inline int kft_exec(FILE *fp_in, const char *filename_in,
   return retcode;
 }
 
-static int kft_run_start(FILE *fp_in, const char *filename_in, size_t *prow_in,
-                         size_t *pcol_in, FILE *fp_out,
-                         const char *filename_out, int ch_esc,
-                         const char delim_st[], const char delim_en[],
-                         int flags, int *preturn_by) {
-  size_t row_in = *prow_in;
-  size_t col_in = *pcol_in;
-  bool return_on_eol = (flags & KFT_PFL_RETURN_ON_EOL) != 0;
-
-// OVERRIDE RETURN
-#define return(code)                                                           \
-  do {                                                                         \
-    *prow_in = row_in;                                                         \
-    *pcol_in = col_in;                                                         \
-    if (pch != NULL) {                                                         \
-      *pch = ch;                                                               \
-    }                                                                          \
-    return (code);                                                             \
-  } while (0)
-
-  if ((flags & KFT_PFL_COMMENT) != 0) {
-    return kft_run(fp_in, filename_in, prow_in, pcol_in, fp_out, filename_out,
-                   ch_esc, delim_st, delim_en, flags, preturn_by);
+static inline int kft_run_shell(FILE *fp_in, const char *filename_in,
+                                size_t *prow_in, size_t *pcol_in, char **ppend,
+                                size_t *ppendposr, size_t *ppendposw,
+                                size_t *ppendsize, FILE *fp_out,
+                                const char *filename_out, int ch_esc,
+                                int *pesclen, const char *delim_st,
+                                const char *delim_en, int flags) {
+  char *shell = getenv(KFT_ENVNAME_SHELL);
+  if (shell == NULL) {
+    shell = getenv(KFT_ENVNAME_SHELL_RAW);
   }
-
-  size_t row_in_prev = row_in;
-  size_t col_in_prev = col_in;
-  int ch = fgetc(fp_in);
-  if (ch == EOF) {
-    return KFT_SUCCESS;
+  if (shell == NULL) {
+    shell = KFT_OPTDEF_SHELL;
   }
-  if (ch == '\n') {
-    row_in++;
-    col_in = 0;
-    if (return_on_eol) {
-      return KFT_EOL;
-    }
-  } else {
-    col_in++;
-  }
-  switch (ch) {
-  case '$':
-    return ktf_run_var(fp_in, filename_in, &row_in, &col_in, fp_out,
-                       filename_out, ch_esc, delim_st, delim_en, flags,
-                       preturn_by);
-  case '!': { // EXECUTE IN DEFAULT SHELL
-    char *shell = getenv(KFT_ENVNAME_SHELL);
-    if (shell == NULL) {
-      shell = getenv(KFT_ENVNAME_SHELL_RAW);
-    }
-    if (shell == NULL) {
-      shell = KFT_OPTDEF_SHELL;
-    }
-    char *argv[] = {shell, NULL};
-    return kft_exec(fp_in, filename_in, &row_in, &col_in, fp_out, filename_out,
-                    ch_esc, delim_st, delim_en, flags, pch, shell, argv, 0);
-  }
-  case '#': { // INTERNAL SHEBANG
-    char *linebuf = NULL;
-    size_t linebuflen = 0;
-    FILE *fp_linebuf = open_memstream(&linebuf, &linebuflen);
-    if (fp_linebuf == NULL) {
-      return KFT_FAILURE;
-    }
-    int ret = kft_run(fp_in, filename_in, &row_in, &col_in, fp_linebuf,
-                      "<linebuf>", ch_esc, delim_st, delim_en, flags, pch);
-    fclose(fp_linebuf);
-    if (ret == KFT_FAILURE) {
-      free(linebuf);
-      return KFT_FAILURE;
-    }
-    int like_shebang = *linebuf == '!';
-    char *words = like_shebang ? linebuf + 1 : linebuf;
-    wordexp_t p;
-    int ret2 = wordexp(words, &p, 0);
-    if (ret2 != KFT_SUCCESS) {
-      free(linebuf);
-      return KFT_FAILURE;
-    }
-    if (ret != KFT_EOL) {
-      FILE *fp_in2 = stdin;
-      char filename_in2[PATH_MAX] = "/dev/fd/0";
-      int fd_in2 = fileno(fp_in2);
-      kft_fd_to_path(fd_in2, filename_in2, sizeof(filename_in2));
-      size_t row_in2 = 0;
-      size_t col_in2 = 0;
-      ret = kft_exec(fp_in2, filename_in2, &row_in2, &col_in2, fp_out,
-                     filename_out, ch_esc, delim_st, delim_en, flags, pch,
-                     p.we_wordv[0], p.we_wordv, 0);
-      wordfree(&p);
-      free(linebuf);
-      return ret;
-    }
-    ret = kft_exec(fp_in, filename_in, &row_in, &col_in, fp_out, filename_out,
-                   ch_esc, delim_st, delim_en, flags, pch, p.we_wordv[0],
-                   p.we_wordv, like_shebang);
-    wordfree(&p);
-    free(linebuf);
-    return ret;
-  }
-  case '{': { // set TAG
-    char *tag = NULL;
-    size_t taglen = 0;
-    FILE *fp_tag = open_memstream(&tag, &taglen);
-    if (fp_tag == NULL) {
-      return KFT_FAILURE;
-    }
-    int ret = kft_run(fp_in, filename_in, &row_in, &col_in, fp_tag, "<tag>",
-                      ch_esc, delim_st, delim_en, flags, preturn_by);
-    fclose(fp_tag);
-    if (ret != KFT_SUCCESS) {
-      free(tag);
-      return KFT_FAILURE;
-    }
-    char offset[32];
-    long pos = ftell(fp_in);
-    snprintf(offset, sizeof(offset), "%ld", pos);
-    ret = setenv(tag, offset, 1);
-    free(tag);
-    return ret == 0 ? KFT_SUCCESS : KFT_FAILURE;
-  }
-  case '}': { // GOTO TAG
-    char *tag = NULL;
-    size_t taglen = 0;
-    FILE *fp_tag = open_memstream(&tag, &taglen);
-    if (fp_tag == NULL) {
-      return KFT_FAILURE;
-    }
-    int ret = kft_run(fp_in, filename_in, &row_in, &col_in, fp_tag, "<tag>",
-                      ch_esc, delim_st, delim_en, flags, preturn_by);
-    fclose(fp_tag);
-    if (ret != KFT_SUCCESS) {
-      free(tag);
-      return KFT_FAILURE;
-    }
-    char *offset = getenv(tag);
-    if (offset == NULL) { // FOLLOWING TAG
-      // TODO: implement
-      return KFT_FAILURE;
-    }
-    char *p;
-    long pos = strtol(offset, &p, 0);
-    if (p == offset || *p != '\0' || pos < 0) {
-      fprintf(stderr, "%s:%zu:%zu: @%s: invalid tag\n", filename_in, row_in + 1,
-              col_in, tag);
-      free(tag);
-      return KFT_FAILURE;
-    }
-
-    ret = fseek(fp_in, pos, SEEK_SET);
-    if (ret != 0) {
-      fprintf(stderr, "%s:%zu:%zu: @%s: %m\n", filename_in, row_in + 1, col_in,
-              tag);
-    }
-    free(tag);
-    return ret;
-  }
-  case '-':
-    return kft_run(fp_in, filename_in, &row_in, &col_in, fp_out, filename_out,
-                   ch_esc, delim_st, delim_en, flags | KFT_PFL_COMMENT,
-                   preturn_by);
-
-  case '>':
-    return ktf_run_write(fp_in, filename_in, &row_in, &col_in, ch_esc, delim_st,
-                         delim_en, flags, preturn_by);
-
-  case '<':
-    return ktf_run_read(fp_in, filename_in, &row_in, &col_in, fp_out,
-                        filename_out, ch_esc, delim_st, delim_en, flags,
-                        preturn_by);
-
-  default:
-    ungetc(ch, fp_in);
-    row_in = row_in_prev;
-    col_in = col_in_prev;
-    return kft_run(fp_in, filename_in, &row_in, &col_in, fp_out, filename_out,
-                   ch_esc, delim_st, delim_en, flags, preturn_by);
-  }
-#undef return
+  char *argv[] = {shell, NULL};
+  return kft_exec(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                  ppendposw, ppendsize, fp_out, filename_out, ch_esc, pesclen,
+                  delim_st, delim_en, flags, shell, argv, 0);
 }
 
-static inline int kft_run(FILE *fp_in, const char *filename_in, size_t *prow_in,
-                          size_t *pcol_in, FILE *fp_out,
-                          const char *filename_out, int ch_esc,
-                          const char delim_st[], const char delim_en[],
-                          int flags, int *pch) {
-  size_t row_in = *prow_in;
-  size_t col_in = *pcol_in;
-  size_t is_escaped = 0;
-  size_t delim_st_pos = 0;
-  size_t delim_en_pos = 0;
-  bool return_on_eol = (flags & KFT_PFL_RETURN_ON_EOL) != 0;
-  bool is_comment = (flags & KFT_PFL_COMMENT) != 0;
-  char pending_chars[strlen(delim_st) + strlen(delim_en) + 1];
-  size_t pending_len = 0;
+static inline int kft_exec_inline(FILE *restrict const fp_out,
+                                  const char *restrict const filename_out,
+                                  const int ch_esc,
+                                  const char *restrict const delim_st,
+                                  const char *restrict const delim_en,
+                                  int flags, char *file, char *argv[]) {
+  FILE *fp_in = stdin;
+  char filename_in[PATH_MAX] = "/dev/fd/0";
+  int fd_in = fileno(fp_in);
+  kft_fd_to_path(fd_in, filename_in, sizeof(filename_in));
+  size_t row_in = 0;
+  size_t col_in = 0;
+  char *pend = NULL;
+  size_t pendposr = 0;
+  size_t pendposw = 0;
+  size_t pendsize = 0;
+  int esclen = 0;
+  const int ret =
+      kft_exec(fp_in, filename_in, &row_in, &col_in, &pend, &pendposr,
+               &pendposw, &pendsize, fp_out, filename_out, ch_esc, &esclen,
+               delim_st, delim_en, flags, file, argv, 0);
+  free(pend);
+  return ret;
+}
 
-  int ch;
+static inline int
+kft_run_hash(FILE *restrict const fp_in, const char *restrict const filename_in,
+             size_t *restrict const prow_in, size_t *restrict const pcol_in,
+             char **restrict const ppend, size_t *restrict const ppendposr,
+             size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+             FILE *restrict const fp_out,
+             const char *restrict const filename_out, const int ch_esc,
+             int *restrict const pesclen, const char *restrict const delim_st,
+             const char *restrict const delim_en, int flags) {
+  char *linebuf = NULL;
+  size_t linebuflen = 0;
+  FILE *const fp_linebuf = open_memstream(&linebuf, &linebuflen);
+  if (fp_linebuf == NULL) {
+    return KFT_FAILURE;
+  }
+  const int ret =
+      kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr, ppendposw,
+              ppendsize, fp_linebuf, "<linebuf>", ch_esc, pesclen, delim_st,
+              delim_en, flags);
+  fclose(fp_linebuf);
+  if (ret == KFT_FAILURE) {
+    free(linebuf);
+    return KFT_FAILURE;
+  }
+  const int like_shebang = *linebuf == '!';
+  const char *words = like_shebang ? linebuf + 1 : linebuf;
+  wordexp_t p;
+  const int ret2 = wordexp(words, &p, 0);
+  free(linebuf);
+  if (ret2 != KFT_SUCCESS) {
+    return KFT_FAILURE;
+  }
+  if (ret != KFT_EOL) {
+    const int ret = kft_exec_inline(fp_out, filename_out, ch_esc, delim_st,
+                                    delim_en, flags, p.we_wordv[0], p.we_wordv);
+    wordfree(&p);
+    return ret;
+  }
+  const int ret3 = kft_exec(fp_in, filename_in, prow_in, pcol_in, ppend,
+                            ppendposr, ppendposw, ppendsize, fp_out,
+                            filename_out, ch_esc, pesclen, delim_st, delim_en,
+                            flags, p.we_wordv[0], p.we_wordv, like_shebang);
+  wordfree(&p);
+  return ret3;
+}
 
-// OVERRIDE RETURN
-#define return(code)                                                           \
-  do {                                                                         \
-    *prow_in = row_in;                                                         \
-    *pcol_in = col_in;                                                         \
-    if (pch != NULL) {                                                         \
-      *pch = ch;                                                               \
-    }                                                                          \
-    return (code);                                                             \
-  } while (0)
+static int kft_run_tag_set(
+    FILE *restrict const fp_in, const char *restrict const filename_in,
+    size_t *restrict const prow_in, size_t *restrict const pcol_in,
+    char **restrict const ppend, size_t *restrict const ppendposr,
+    size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+    const int ch_esc, int *restrict const pesclen,
+    const char *restrict const delim_st, const char *restrict const delim_en,
+    int flags) {
+  char *tag = NULL;
+  size_t taglen = 0;
+  FILE *fp_tag = open_memstream(&tag, &taglen);
+  if (fp_tag == NULL) {
+    return KFT_FAILURE;
+  }
+  int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                    ppendposw, ppendsize, fp_tag, "<tag>", ch_esc, pesclen,
+                    delim_st, delim_en, flags);
+  fclose(fp_tag);
+  if (ret != KFT_SUCCESS) {
+    free(tag);
+    return KFT_FAILURE;
+  }
+  char offset[32];
+  long pos = ftell(fp_in);
+  snprintf(offset, sizeof(offset), "%ld", pos);
+  ret = setenv(tag, offset, 1);
+  free(tag);
+  return ret == 0 ? KFT_SUCCESS : KFT_FAILURE;
+}
+
+static int kft_run_tag_goto(
+    FILE *restrict const fp_in, const char *restrict const filename_in,
+    size_t *restrict const prow_in, size_t *restrict const pcol_in,
+    char **restrict const ppend, size_t *restrict const ppendposr,
+    size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+    const int ch_esc, int *restrict const pesclen,
+    const char *restrict const delim_st, const char *restrict const delim_en,
+    int flags) { // GOTO TAG
+  char *tag = NULL;
+  size_t taglen = 0;
+  FILE *fp_tag = open_memstream(&tag, &taglen);
+  if (fp_tag == NULL) {
+    return KFT_FAILURE;
+  }
+  int ret = kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                    ppendposw, ppendsize, fp_tag, "<tag>", ch_esc, pesclen,
+                    delim_st, delim_en, flags);
+  fclose(fp_tag);
+  if (ret != KFT_SUCCESS) {
+    free(tag);
+    return KFT_FAILURE;
+  }
+  char *offset = getenv(tag);
+  if (offset == NULL) { // FOLLOWING TAG
+    // TODO: implement
+    return KFT_FAILURE;
+  }
+  char *p;
+  long pos = strtol(offset, &p, 0);
+  if (p == offset || *p != '\0' || pos < 0) {
+    fprintf(stderr, "%s:%zu:%zu: @%s: invalid tag\n", filename_in, *prow_in + 1,
+            *pcol_in, tag);
+    free(tag);
+    return KFT_FAILURE;
+  }
+
+  ret = fseek(fp_in, pos, SEEK_SET);
+  if (ret != 0) {
+    fprintf(stderr, "%s:%zu:%zu: @%s: %m\n", filename_in, *prow_in + 1,
+            *pcol_in, tag);
+  }
+  free(tag);
+  return ret;
+}
+
+static int
+kft_run_start(FILE *restrict const fp_in,
+              const char *restrict const filename_in,
+              size_t *restrict const prow_in, size_t *restrict const pcol_in,
+              char **restrict const ppend, size_t *restrict const ppendposr,
+              size_t *restrict const ppendposw,
+              size_t *restrict const ppendsize, FILE *restrict const fp_out,
+              const char *restrict const filename_out, const int ch_esc,
+              int *restrict const pesclen, const char *restrict const delim_st,
+              const char *restrict const delim_en, int flags) {
+  if ((flags & KFT_PFL_COMMENT) != 0) {
+    return kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                   ppendposw, ppendsize, fp_out, filename_out, ch_esc, pesclen,
+                   delim_st, delim_en, flags);
+  }
+
+  int ch = kft_fgetc_raw(fp_in, *ppend, ppendposr, ppendposw);
+  switch (ch) {
+  case '$':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return ktf_run_var(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                       ppendposw, ppendsize, fp_out, filename_out, ch_esc,
+                       pesclen, delim_st, delim_en, flags);
+
+  case '!':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return kft_run_shell(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                         ppendposw, ppendsize, fp_out, filename_out, ch_esc,
+                         pesclen, delim_st, delim_en, flags);
+
+  case '#':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return kft_run_hash(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                        ppendposw, ppendsize, fp_out, filename_out, ch_esc,
+                        pesclen, delim_st, delim_en, flags);
+
+  case '{':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return kft_run_tag_set(fp_in, filename_in, prow_in, pcol_in, ppend,
+                           ppendposr, ppendposw, ppendsize, ch_esc, pesclen,
+                           delim_st, delim_en, flags);
+
+  case '}':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return kft_run_tag_goto(fp_in, filename_in, prow_in, pcol_in, ppend,
+                            ppendposr, ppendposw, ppendsize, ch_esc, pesclen,
+                            delim_st, delim_en, flags);
+
+  case '-':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                   ppendposw, ppendsize, fp_out, filename_out, ch_esc, pesclen,
+                   delim_st, delim_en, flags | KFT_PFL_COMMENT);
+
+  case '>':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return ktf_run_write(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                         ppendposw, ppendsize, ch_esc, pesclen, delim_st,
+                         delim_en, flags);
+
+  case '<':
+    kft_getc_update_pos(ch, prow_in, pcol_in);
+    return ktf_run_read(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                        ppendposw, ppendsize, fp_out, filename_out, ch_esc,
+                        pesclen, delim_st, delim_en, flags);
+
+  default:
+    kft_ungetc_raw(ch, ppend, ppendposr, ppendposw, ppendsize);
+    return kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                   ppendposw, ppendsize, fp_out, filename_out, ch_esc, pesclen,
+                   delim_st, delim_en, flags);
+  }
+}
+
+static inline int
+kft_run(FILE *const fp_in, const char *restrict const filename_in,
+        size_t *restrict const prow_in, size_t *restrict const pcol_in,
+        char **restrict const ppend, size_t *restrict const ppendposr,
+        size_t *restrict const ppendposw, size_t *restrict const ppendsize,
+        FILE *const fp_out, const char *restrict const filename_out,
+        const int ch_esc, int *restrict const pesclen,
+        const char *restrict const delim_st,
+        const char *restrict const delim_en, const int flags) {
+  const bool return_on_eol = (flags & KFT_PFL_RETURN_ON_EOL) != 0;
+  const bool is_comment = (flags & KFT_PFL_COMMENT) != 0;
 
   while (1) {
 
-    ch = fgetc(fp_in);
-    if (ch == EOF) {
+    const int ch =
+        kft_fgetc(fp_in, prow_in, pcol_in, ppend, ppendposr, ppendposw,
+                  ppendsize, ch_esc, pesclen, delim_st, delim_en);
+
+    switch (ch) {
+    case EOF:
       return KFT_SUCCESS;
-    } else if (ch == '\n') {
-      row_in++;
-      col_in = 0;
+
+    case KFT_CH_BEGIN: {
+      const int ret =
+          kft_run_start(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
+                        ppendposw, ppendsize, fp_out, filename_out, ch_esc,
+                        pesclen, delim_st, delim_en, flags);
+      if (ret != KFT_SUCCESS) {
+        return ret;
+      }
+      continue;
+    }
+    case KFT_CH_END:
+      return KFT_EOL;
+
+    case KFT_CH_EOL:
       if (return_on_eol) {
         return KFT_EOL;
       }
-    } else {
-      col_in++;
+      break;
     }
 
-    // ESCAPE CHARACTER
-    if (pending_len == 0 && ch == ch_esc) {
-      is_escaped = 1;
-      pending_chars[pending_len++] = ch;
+    if (is_comment) {
       continue;
     }
 
-    // process end delimiter
-    int is_delim_en = delim_en[delim_en_pos] == ch;
-    if (is_delim_en) {
-      delim_en_pos++;
-      if (!is_escaped && delim_en[delim_en_pos] == '\0') {
-        return KFT_SUCCESS;
-      }
-      pending_chars[pending_len++] = ch;
-    }
-
-    // process start delimiter
-    int is_delim_st = delim_st[delim_st_pos] == ch;
-    if (is_delim_st) {
-      delim_st_pos++;
-      if (!is_escaped && delim_st[delim_st_pos] == '\0') {
-        int ret =
-            kft_run_start(fp_in, filename_in, &row_in, &col_in, fp_out,
-                          filename_out, ch_esc, delim_st, delim_en, flags, pch);
-        if (ret != KFT_SUCCESS) {
-          return ret;
-        }
-      }
-      pending_chars[pending_len++] = ch;
-    }
-
-    if (is_delim_en || is_delim_st || is_comment) {
-      continue;
-    }
-
-    if (is_escaped) {
-      if (ch != ch_esc) {
-        int ret = fputc(ch_esc, fp_out);
-        if (ret == EOF) {
-          return KFT_FAILURE;
-        }
-      }
-      is_escaped = 0;
-    }
-
-    // process normal character
-    const int ret = fputc(ch, fp_out);
-    if (ret == EOF)
+    const int ret = kft_fputc(ch, fp_out);
+    if (ret == EOF) {
       return KFT_FAILURE;
+    }
   }
-#undef return
 }
 
 int main(int argc, char *argv[]) {
@@ -834,9 +855,15 @@ int main(int argc, char *argv[]) {
         perror(DATADIR "/kft_help.kft");
         return EXIT_FAILURE;
       }
-      kft_run(fp_in, DATADIR "/kft_help.kft", &row_in, &col_in, stdout,
-              "<stdout>", KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END,
-              0, NULL);
+      char *pend = NULL;
+      size_t pendposr = 0;
+      size_t pendposw = 0;
+      size_t pendsize = 0;
+      int esclen = 0;
+      kft_run(fp_in, DATADIR "/kft_help.kft", &row_in, &col_in, &pend,
+              &pendposr, &pendposw, &pendsize, stdout, "<stdout>",
+              KFT_OPTDEF_ESCAPE, &esclen, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END, 0);
+      free(pend);
       return 0;
     }
 
@@ -926,10 +953,17 @@ int main(int argc, char *argv[]) {
     snprintf(filename_buf_in, sizeof(filename_buf_in), "<eval:%zu>", i + 1);
     size_t row_in = 0;
     size_t col_in = 0;
+    char *pend = NULL;
+    size_t pendposr = 0;
+    size_t pendposw = 0;
+    size_t pendsize = 0;
+    int esclen = 0;
 
-    int ret2 = kft_run(fp_mem, filename_buf_in, &row_in, &col_in, fp_out,
-                       filename_out, opt_escape, opt_begin, opt_end, 0, NULL);
+    int ret2 = kft_run(fp_mem, filename_buf_in, &row_in, &col_in, &pend,
+                       &pendposr, &pendposw, &pendsize, fp_out, filename_out,
+                       opt_escape, &esclen, opt_begin, opt_end, 0);
     fclose(fp_mem);
+    free(pend);
     if (ret2 != KFT_SUCCESS) {
       return EXIT_FAILURE;
     }
@@ -947,9 +981,21 @@ int main(int argc, char *argv[]) {
         kft_fd_to_path(fd, filename_buf_in, sizeof(filename_buf_in));
     size_t row_in = 0;
     size_t col_in = 0;
+    char *pend = NULL;
+    size_t pendposr = 0;
+    size_t pendposw = 0;
+    size_t pendsize = 0;
+    int esclen = 0;
 
-    return kft_run(stdin, filename_in, &row_in, &col_in, fp_out, filename_out,
-                   opt_escape, opt_begin, opt_end, 0, NULL);
+    const int ret =
+        kft_run(stdin, filename_in, &row_in, &col_in, &pend, &pendposr,
+                &pendposw, &pendsize, fp_out, filename_out, opt_escape, &esclen,
+                opt_begin, opt_end, 0);
+    free(pend);
+    if (ret != KFT_SUCCESS) {
+      return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
   }
 
   for (int i = optind; i < argc; i++) {
@@ -971,7 +1017,22 @@ int main(int argc, char *argv[]) {
         kft_fd_to_path(fd, filename_buf_in, sizeof(filename_buf_in));
     size_t row_in = 0;
     size_t col_in = 0;
-    return kft_run(fp, filename_in, &row_in, &col_in, fp_out, filename_out,
-                   opt_escape, opt_begin, opt_end, 0, NULL);
+    char *pend = NULL;
+    size_t pendposr = 0;
+    size_t pendposw = 0;
+    size_t pendsize = 0;
+    int esclen = 0;
+
+    const int ret = kft_run(fp, filename_in, &row_in, &col_in, &pend, &pendposr,
+                            &pendposw, &pendsize, fp_out, filename_out,
+                            opt_escape, &esclen, opt_begin, opt_end, 0);
+    free(pend);
+    if (ret != KFT_SUCCESS) {
+      return EXIT_FAILURE;
+    }
+    if (fp != stdin) {
+      fclose(fp);
+    }
   }
+  return EXIT_SUCCESS;
 }

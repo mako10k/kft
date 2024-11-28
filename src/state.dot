@@ -1,0 +1,71 @@
+digraph G {
+    graph [ rankdir = "LR" ]
+    node [ fontname = "Courier", shape = "oval", style = "filled", fillcolor = "lightblue" ]
+    edge [ fontname = "Courier" ]
+    φ [ shape = none, style = none ]
+    
+    φ -> "SE0" [ label = "fetch:ST0(==EN0)" ]
+    φ -> "EN0" [ label = "fetch:EN0" ]
+    φ -> "ST0" [ label = "fetch:ST0" ]
+    φ -> "ES|" [ label = "fetch:ES" ]
+    φ -> "CH" [ label = "fatch:CH" ]
+
+    "SE0" -> "SE0 .. SEi" [ label = "fetch:STi(==ENi)" ]
+    "SE0" -> "EN0 .. ENi" [ label = "fetch:ENi(!=STi)" ]
+    "SE0" -> "ST0 .. STi" [ label = "fetch:STi(!=ENi)" ]
+    "SE0" -> "SE0 SE0" [ label = "fetch:ST0(==EN0)" ]
+    "SE0" -> "SE0 ES" [ label = "fetch:ES" ]
+    "SE0" -> "SE0 CH" [ label = "fetch:CH" ]
+    "SE0 SE0" -> "SE0" [ label = "put_raw:ST0(==EN0)" ]
+    "SE0 ES" -> "ES|" [ label = "put_raw:ST0(==EN0)" ]
+    "SE0 CH" -> "CH" [ label = "put_raw:ST0(==EN0)" ]
+
+
+    "EN0" -> "EN0 .. ENi" [ label = "fetch:ENi" ]
+    "EN0 .. ENi" -> "EN0 .. ENi" [ label = "fetch:ENi" ]
+    "EN0 .. ENi" -> "EN0 .. ENn" [ label = "fetch:ENn" ]
+    "EN0 .. ENn" -> φ [ label = "put_raw:DELIM_EN" ]
+
+    "ST0" -> "ST0 .. STi" [ label = "fetch:STi" ]
+    "ST0 .. STi" -> "ST0 .. STi" [ label = "fetch:STi" ]
+    "ST0 .. STi" -> "ST0 .. STn" [ label = "fetch:STn" ]
+    "ST0 .. STn" -> φ [ label = "put_raw:DELIM_ST" ]
+
+    "SE0 .. SEi" -> "SE0 .. SEi" [ label = "fetch:STi(==ENi)" ]
+    "SE0 .. SEi" -> "SE0 .. SEn" [ label = "fetch:STn(==ENn)" ]
+    "SE0 .. SEn" -> φ [ label = "put_raw:DELIM_EN" ]
+
+
+    "CH" -> φ [ label = "put_raw:CH" ]
+
+    "ES|" -> φ [ label = "fetch:ES\nput_raw:ES" ]
+    "ES|" -> "ES|EN0" [ label = "fetch:EN0" ]
+    "ES|EN0" -> "ES|EN0 .. ENi" [ label = "fetch:ENi" ]
+    "ES|EN0 .. ENi" -> "ES|EN0 .. ENi" [ label = "fetch:ENi" ]
+    "ES|EN0 .. ENi" -> "ES|EN0 .. ENn" [ label = "fetch:ENn" ]
+    "ES|EN0 .. ENn" -> "EN1 .. ENn" [ label = "put_raw:EN0" ]
+    "EN1 .. ENn" -> "ENi .. ENn" [ label = "put:ENi" ]
+    "ENi .. ENn" -> "ENi .. ENn" [ label = "put:ENi" ]
+    "ENi .. ENn" -> "ENn" [ label = "put:EN(n-1)" ]
+    "ENn" -> φ [ label = "put:ENn" ]
+
+    "ES|" -> "ES|ST0" [ label = "fetch:ST0" ]
+    "ES|ST0" -> "ES|ST0 .. STi" [ label = "fetch:STi" ]
+    "ES|ST0 .. STi" -> "ES|ST0 .. STi" [ label = "fetch:STi" ]
+    "ES|ST0 .. STi" -> "ES|ST0 .. STn" [ label = "fetch:STn" ]
+    "ES|ST0 .. STn" -> "ST1 .. STn" [ label = "put_raw:ST0" ]
+    "ST1 .. STn" -> "STi .. STn" [ label = "put:STi" ]
+    "STi .. STn" -> "STi .. STn" [ label = "put:STi" ]
+    "STi .. STn" -> "STn" [ label = "put:ST(n-1)" ]
+    "STn" -> φ [ label = "put:STn" ]
+
+    "ES|" -> "ES|SE0" [ label = "fetch:ST0==EN0" ]
+    "ES|SE0" -> "ES|SE0 .. SEi" [ label = "fetch:STi==ENi" ]
+    "ES|SE0 .. SEi" -> "ES|SE0 .. SEi" [ label = "fetch:STi==ENi" ]
+    "ES|SE0 .. SEi" -> "ES|SE0 .. SEn" [ label = "fetch:STn==ENn" ]
+    "ES|SE0 .. SEn" -> "ST1/EN1 .. SEn" [ label = "put_raw:ST0" ]
+    "ST1/EN1 .. SEn" -> "SEi .. SEn" [ label = "put:STi==ENi" ]
+    "SEi .. SEn" -> "SEi .. SEn" [ label = "put:STi==ENi" ]
+    "SEi .. SEn" -> "SEn" [ label = "put:ST(n-1)==EN(n-1)" ]
+    "SEn" -> φ [ label = "put:STn==ENn" ]
+}
