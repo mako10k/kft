@@ -13,8 +13,8 @@
 #define KFT_CH_BEGIN 0x102
 
 static inline void kft_getc_update_pos(const int ch,
-                                       size_t *restrict const prow_in,
-                                       size_t *restrict const pcol_in) {
+                                       size_t * const prow_in,
+                                       size_t * const pcol_in) {
   switch (ch) {
   case EOF:
     break;
@@ -27,18 +27,18 @@ static inline void kft_getc_update_pos(const int ch,
   }
 }
 
-static inline int kft_fgetc_raw(FILE *restrict const fp_in,
-                                const char *restrict const pend,
-                                size_t *restrict const ppendposr,
-                                const size_t *restrict const ppendposw) {
+static inline int kft_fgetc_raw(FILE * const fp_in,
+                                const char * const pend,
+                                size_t * const ppendposr,
+                                const size_t * const ppendposw) {
   return (*ppendposr < *ppendposw) ? pend[(*ppendposr)++] : fgetc(fp_in);
 }
 
 // TODO: BUGGY (MAYBE ORDER OF UNGETC)
-static inline int kft_ungetc_raw(const int ch, char **restrict const ppend,
-                                 size_t *restrict const ppendposr,
-                                 size_t *restrict const ppendposw,
-                                 size_t *restrict const ppendsize) {
+static inline int kft_ungetc_raw(const int ch, char ** const ppend,
+                                 size_t * const ppendposr,
+                                 size_t * const ppendposw,
+                                 size_t * const ppendsize) {
   if (*ppendposr > 0 && *ppendposr == *ppendposw) {
     *ppendposr = 0;
     *ppendposw = 0;
@@ -63,12 +63,12 @@ static inline int kft_ungetc_raw(const int ch, char **restrict const ppend,
 }
 
 static inline int
-kft_fgetc(FILE *restrict const fp_in, size_t *restrict const prow_in,
-          size_t *restrict const pcol_in, char **restrict const ppend,
-          size_t *restrict const ppendposr, size_t *restrict const ppendposw,
-          size_t *restrict const ppendsize, const int ch_esc,
-          int *restrict pesclen, const char *restrict const delim_st,
-          const char *restrict const delim_en) {
+kft_fgetc(FILE * const fp_in, size_t * const prow_in,
+          size_t * const pcol_in, char ** const ppend,
+          size_t * const ppendposr, size_t * const ppendposw,
+          size_t * const ppendsize, const int ch_esc,
+          int * pesclen, const char * const delim_st,
+          const char * const delim_en) {
   while (1) {
     // GET NEXT CHARACTER
     const int ch = kft_fgetc_raw(fp_in, *ppend, ppendposr, ppendposw);
@@ -281,7 +281,7 @@ kft_fgetc(FILE *restrict const fp_in, size_t *restrict const prow_in,
   }
 }
 
-static inline int kft_fputc(const int ch, FILE *restrict const fp_out) {
+static inline int kft_fputc(const int ch, FILE * const fp_out) {
   const int ret = fputc(ch, fp_out);
   return ret == EOF ? KFT_FAILURE : KFT_SUCCESS;
 }

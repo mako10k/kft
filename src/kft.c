@@ -55,24 +55,20 @@ static const char *kft_fd_to_path(const int fd, char *const buf,
   return buf;
 }
 
-static inline int
-kft_run(FILE *const fp_in, const char *restrict const filename_in,
-        size_t *restrict const prow_in, size_t *restrict const pcol_in,
-        char **restrict const ppend, size_t *restrict const ppendposr,
-        size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-        FILE *const fp_out, const char *restrict const filename_out,
-        const int ch_esc, int *restrict const pesclen,
-        const char *restrict const delim_st,
-        const char *restrict const delim_en, const int flags);
+static inline int kft_run(FILE *const fp_in, const char *const filename_in,
+                          size_t *const prow_in, size_t *const pcol_in,
+                          char **const ppend, size_t *const ppendposr,
+                          size_t *const ppendposw, size_t *const ppendsize,
+                          FILE *const fp_out, const char *const filename_out,
+                          const int ch_esc, int *const pesclen,
+                          const char *const delim_st,
+                          const char *const delim_en, const int flags);
 
-static int kft_run_read_var_input(const char *restrict const value,
-                                  FILE *restrict const fp_out,
-                                  const char *restrict const filename_out,
-                                  const int ch_esc,
-                                  const char *restrict const delim_st,
-                                  const char *restrict const delim_en,
-                                  const int flags) {
-  FILE *restrict const fp_in = fopen(value, "r");
+static int kft_run_read_var_input(const char *const value, FILE *const fp_out,
+                                  const char *const filename_out,
+                                  const int ch_esc, const char *const delim_st,
+                                  const char *const delim_en, const int flags) {
+  FILE *const fp_in = fopen(value, "r");
   if (fp_in == NULL) {
     return KFT_FAILURE;
   }
@@ -95,13 +91,11 @@ static int kft_run_read_var_input(const char *restrict const value,
 }
 
 static int kft_run_read_var_output(
-    const char *restrict const value, FILE *restrict const fp_in,
-    const char *restrict const filename_in, size_t *restrict const prow_in,
-    size_t *restrict const pcol_in, char **restrict const ppend,
-    size_t *restrict const ppendposr, size_t *restrict const ppendposw,
-    size_t *restrict const ppendsize, const int ch_esc,
-    int *restrict const pesclen, const char *restrict const delim_st,
-    const char *restrict const delim_en, const int flags) {
+    const char *const value, FILE *const fp_in, const char *const filename_in,
+    size_t *const prow_in, size_t *const pcol_in, char **const ppend,
+    size_t *const ppendposr, size_t *const ppendposw, size_t *const ppendsize,
+    const int ch_esc, int *const pesclen, const char *const delim_st,
+    const char *const delim_en, const int flags) {
   FILE *const fp_out = fopen(value, "w");
   if (fp_out == NULL) {
     return KFT_FAILURE;
@@ -116,16 +110,15 @@ static int kft_run_read_var_output(
   return ret;
 }
 
-static int kft_run_read_var(
-    const char *restrict const name, const char *restrict const value,
-    FILE *restrict const fp_in, const char *restrict const filename_in,
-    size_t *restrict const prow_in, size_t *restrict const pcol_in,
-    char **restrict const ppend, size_t *restrict const ppendposr,
-    size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-    FILE *restrict const fp_out, const char *restrict const filename_out,
-    const int ch_esc, int *restrict const pesclen,
-    const char *restrict const delim_st, const char *restrict const delim_en,
-    const int flags) {
+static int kft_run_read_var(const char *const name, const char *const value,
+                            FILE *const fp_in, const char *const filename_in,
+                            size_t *const prow_in, size_t *const pcol_in,
+                            char **const ppend, size_t *const ppendposr,
+                            size_t *const ppendposw, size_t *const ppendsize,
+                            FILE *const fp_out, const char *const filename_out,
+                            const int ch_esc, int *const pesclen,
+                            const char *const delim_st,
+                            const char *const delim_en, const int flags) {
   // SPECIAL NAME
   if (strcmp(KFT_VARNAME_INPUT, name) == 0) {
     const int ret = kft_run_read_var_input(value, fp_out, filename_out, ch_esc,
@@ -189,15 +182,14 @@ static int kft_run_write_var(const char *name, FILE *fp_in,
   return KFT_SUCCESS;
 }
 
-static int
-ktf_run_var(FILE *restrict const fp_in, const char *restrict const filename_in,
-            size_t *restrict const prow_in, size_t *restrict const pcol_in,
-            char **restrict const ppend, size_t *restrict const ppendposr,
-            size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-            FILE *restrict const fp_out,
-            const char *restrict const filename_out, const int ch_esc,
-            int *restrict const pesclen, const char *restrict const delim_st,
-            const char *restrict const delim_en, const int flags) {
+static int ktf_run_var(FILE *const fp_in, const char *const filename_in,
+                       size_t *const prow_in, size_t *const pcol_in,
+                       char **const ppend, size_t *const ppendposr,
+                       size_t *const ppendposw, size_t *const ppendsize,
+                       FILE *const fp_out, const char *const filename_out,
+                       const int ch_esc, int *const pesclen,
+                       const char *const delim_st, const char *const delim_en,
+                       const int flags) {
   char *name = NULL;
   size_t namelen = 0;
   FILE *const fp_name = open_memstream(&name, &namelen);
@@ -230,15 +222,14 @@ ktf_run_var(FILE *restrict const fp_in, const char *restrict const filename_in,
   }
 }
 
-static inline int
-ktf_run_write(FILE *restrict const fp_in,
-              const char *restrict const filename_in,
-              size_t *restrict const prow_in, size_t *restrict const pcol_in,
-              char **restrict const ppend, size_t *restrict const ppendposr,
-              size_t *restrict const ppendposw,
-              size_t *restrict const ppendsize, const int ch_esc,
-              int *restrict const pesclen, const char *restrict const delim_st,
-              const char *restrict const delim_en, int flags) {
+static inline int ktf_run_write(FILE *const fp_in,
+                                const char *const filename_in,
+                                size_t *const prow_in, size_t *const pcol_in,
+                                char **const ppend, size_t *const ppendposr,
+                                size_t *const ppendposw,
+                                size_t *const ppendsize, const int ch_esc,
+                                int *const pesclen, const char *const delim_st,
+                                const char *const delim_en, int flags) {
   char *filename = NULL;
   size_t filenamelen = 0;
   FILE *fp_filename = open_memstream(&filename, &filenamelen);
@@ -267,15 +258,14 @@ ktf_run_write(FILE *restrict const fp_in,
   return trt;
 }
 
-static inline int
-ktf_run_read(FILE *restrict const fp_in, const char *restrict const filename_in,
-             size_t *restrict const prow_in, size_t *restrict const pcol_in,
-             char **restrict const ppend, size_t *restrict const ppendposr,
-             size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-             FILE *restrict const fp_out, const char *filename_out,
-             const int ch_esc, int *restrict const pesclen,
-             const char *restrict const delim_st,
-             const char *restrict const delim_en, const int flags) {
+static inline int ktf_run_read(FILE *const fp_in, const char *const filename_in,
+                               size_t *const prow_in, size_t *const pcol_in,
+                               char **const ppend, size_t *const ppendposr,
+                               size_t *const ppendposw, size_t *const ppendsize,
+                               FILE *const fp_out, const char *filename_out,
+                               const int ch_esc, int *const pesclen,
+                               const char *const delim_st,
+                               const char *const delim_en, const int flags) {
   char *filename = NULL;
   size_t filenamelen = 0;
   FILE *fp_filename = open_memstream(&filename, &filenamelen);
@@ -318,16 +308,15 @@ static inline void *kft_pump_run(void *data) {
   return (void *)(intptr_t)KFT_SUCCESS;
 }
 
-static inline int
-kft_exec(FILE *restrict const fp_in, const char *restrict const filename_in,
-         size_t *restrict const prow_in, size_t *restrict const pcol_in,
-         char **restrict const ppend, size_t *restrict const ppendposr,
-         size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-         FILE *restrict const fp_out, const char *restrict const filename_out,
-         const int ch_esc, int *restrict const pesclen,
-         const char *restrict const delim_st, const char delim_en[],
-         const int flags, const char *const file, char *argv[],
-         const int input_by_arg) {
+static inline int kft_exec(FILE *const fp_in, const char *const filename_in,
+                           size_t *const prow_in, size_t *const pcol_in,
+                           char **const ppend, size_t *const ppendposr,
+                           size_t *const ppendposw, size_t *const ppendsize,
+                           FILE *const fp_out, const char *const filename_out,
+                           const int ch_esc, int *const pesclen,
+                           const char *const delim_st, const char delim_en[],
+                           const int flags, const char *const file,
+                           char *argv[], const int input_by_arg) {
   // DEFAULT STREAM
   int pipefds[4];
   // pipefds[0] : read  of (  parent -> child  *)
@@ -502,12 +491,11 @@ static inline int kft_run_shell(FILE *fp_in, const char *filename_in,
                   delim_st, delim_en, flags, shell, argv, 0);
 }
 
-static inline int kft_exec_inline(FILE *restrict const fp_out,
-                                  const char *restrict const filename_out,
-                                  const int ch_esc,
-                                  const char *restrict const delim_st,
-                                  const char *restrict const delim_en,
-                                  int flags, char *file, char *argv[]) {
+static inline int kft_exec_inline(FILE *const fp_out,
+                                  const char *const filename_out,
+                                  const int ch_esc, const char *const delim_st,
+                                  const char *const delim_en, int flags,
+                                  char *file, char *argv[]) {
   FILE *fp_in = stdin;
   char filename_in[PATH_MAX] = "/dev/fd/0";
   int fd_in = fileno(fp_in);
@@ -527,15 +515,14 @@ static inline int kft_exec_inline(FILE *restrict const fp_out,
   return ret;
 }
 
-static inline int
-kft_run_hash(FILE *restrict const fp_in, const char *restrict const filename_in,
-             size_t *restrict const prow_in, size_t *restrict const pcol_in,
-             char **restrict const ppend, size_t *restrict const ppendposr,
-             size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-             FILE *restrict const fp_out,
-             const char *restrict const filename_out, const int ch_esc,
-             int *restrict const pesclen, const char *restrict const delim_st,
-             const char *restrict const delim_en, int flags) {
+static inline int kft_run_hash(FILE *const fp_in, const char *const filename_in,
+                               size_t *const prow_in, size_t *const pcol_in,
+                               char **const ppend, size_t *const ppendposr,
+                               size_t *const ppendposw, size_t *const ppendsize,
+                               FILE *const fp_out,
+                               const char *const filename_out, const int ch_esc,
+                               int *const pesclen, const char *const delim_st,
+                               const char *const delim_en, int flags) {
   char *linebuf = NULL;
   size_t linebuflen = 0;
   FILE *const fp_linebuf = open_memstream(&linebuf, &linebuflen);
@@ -573,14 +560,13 @@ kft_run_hash(FILE *restrict const fp_in, const char *restrict const filename_in,
   return ret3;
 }
 
-static int kft_run_tag_set(
-    FILE *restrict const fp_in, const char *restrict const filename_in,
-    size_t *restrict const prow_in, size_t *restrict const pcol_in,
-    char **restrict const ppend, size_t *restrict const ppendposr,
-    size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-    const int ch_esc, int *restrict const pesclen,
-    const char *restrict const delim_st, const char *restrict const delim_en,
-    int flags) {
+static int kft_run_tag_set(FILE *const fp_in, const char *const filename_in,
+                           size_t *const prow_in, size_t *const pcol_in,
+                           char **const ppend, size_t *const ppendposr,
+                           size_t *const ppendposw, size_t *const ppendsize,
+                           const int ch_esc, int *const pesclen,
+                           const char *const delim_st,
+                           const char *const delim_en, int flags) {
   char *tag = NULL;
   size_t taglen = 0;
   FILE *fp_tag = open_memstream(&tag, &taglen);
@@ -603,14 +589,14 @@ static int kft_run_tag_set(
   return ret == 0 ? KFT_SUCCESS : KFT_FAILURE;
 }
 
-static int kft_run_tag_goto(
-    FILE *restrict const fp_in, const char *restrict const filename_in,
-    size_t *restrict const prow_in, size_t *restrict const pcol_in,
-    char **restrict const ppend, size_t *restrict const ppendposr,
-    size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-    const int ch_esc, int *restrict const pesclen,
-    const char *restrict const delim_st, const char *restrict const delim_en,
-    int flags) { // GOTO TAG
+static int kft_run_tag_goto(FILE *const fp_in, const char *const filename_in,
+                            size_t *const prow_in, size_t *const pcol_in,
+                            char **const ppend, size_t *const ppendposr,
+                            size_t *const ppendposw, size_t *const ppendsize,
+                            const int ch_esc, int *const pesclen,
+                            const char *const delim_st,
+                            const char *const delim_en,
+                            int flags) { // GOTO TAG
   char *tag = NULL;
   size_t taglen = 0;
   FILE *fp_tag = open_memstream(&tag, &taglen);
@@ -648,16 +634,14 @@ static int kft_run_tag_goto(
   return ret;
 }
 
-static int
-kft_run_start(FILE *restrict const fp_in,
-              const char *restrict const filename_in,
-              size_t *restrict const prow_in, size_t *restrict const pcol_in,
-              char **restrict const ppend, size_t *restrict const ppendposr,
-              size_t *restrict const ppendposw,
-              size_t *restrict const ppendsize, FILE *restrict const fp_out,
-              const char *restrict const filename_out, const int ch_esc,
-              int *restrict const pesclen, const char *restrict const delim_st,
-              const char *restrict const delim_en, int flags) {
+static int kft_run_start(FILE *const fp_in, const char *const filename_in,
+                         size_t *const prow_in, size_t *const pcol_in,
+                         char **const ppend, size_t *const ppendposr,
+                         size_t *const ppendposw, size_t *const ppendsize,
+                         FILE *const fp_out, const char *const filename_out,
+                         const int ch_esc, int *const pesclen,
+                         const char *const delim_st, const char *const delim_en,
+                         int flags) {
   if ((flags & KFT_PFL_COMMENT) != 0) {
     return kft_run(fp_in, filename_in, prow_in, pcol_in, ppend, ppendposr,
                    ppendposw, ppendsize, fp_out, filename_out, ch_esc, pesclen,
@@ -722,15 +706,14 @@ kft_run_start(FILE *restrict const fp_in,
   }
 }
 
-static inline int
-kft_run(FILE *const fp_in, const char *restrict const filename_in,
-        size_t *restrict const prow_in, size_t *restrict const pcol_in,
-        char **restrict const ppend, size_t *restrict const ppendposr,
-        size_t *restrict const ppendposw, size_t *restrict const ppendsize,
-        FILE *const fp_out, const char *restrict const filename_out,
-        const int ch_esc, int *restrict const pesclen,
-        const char *restrict const delim_st,
-        const char *restrict const delim_en, const int flags) {
+static inline int kft_run(FILE *const fp_in, const char *const filename_in,
+                          size_t *const prow_in, size_t *const pcol_in,
+                          char **const ppend, size_t *const ppendposr,
+                          size_t *const ppendposw, size_t *const ppendsize,
+                          FILE *const fp_out, const char *const filename_out,
+                          const int ch_esc, int *const pesclen,
+                          const char *const delim_st,
+                          const char *const delim_en, const int flags) {
   const bool return_on_eol = (flags & KFT_PFL_RETURN_ON_EOL) != 0;
   const bool is_comment = (flags & KFT_PFL_COMMENT) != 0;
 
@@ -768,9 +751,16 @@ kft_run(FILE *const fp_in, const char *restrict const filename_in,
       continue;
     }
 
-    const int ret = kft_fputc(ch, fp_out);
-    if (ret == EOF) {
-      return KFT_FAILURE;
+    if (KFT_CH_ISNORM(ch)) {
+      const int ret = kft_fputc(ch, fp_out);
+      if (ret == EOF) {
+        return KFT_FAILURE;
+      }
+    } else if (KFT_CH_EOL) {
+      const int ret = kft_fputc('\n', fp_out);
+      if (ret == EOF) {
+        return KFT_FAILURE;
+      }
     }
   }
 }
