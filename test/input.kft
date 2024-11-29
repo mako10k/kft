@@ -1,4 +1,2 @@
 #!/usr/bin/env kft
 {{$TEST}}
-TEST FOR END DELIM: ABC}DEF}GHI
-

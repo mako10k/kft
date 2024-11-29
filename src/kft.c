@@ -578,7 +578,9 @@ int main(int argc, char *argv[]) {
       break;
 
     case 'h': {
-      kft_input_t in = kft_input_init(NULL, DATADIR "/kft_help.kft", NULL);
+      kft_input_spec_t spec = kft_input_spec_init(
+          KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
+      kft_input_t in = kft_input_init(NULL, DATADIR "/kft_help.kft", &spec);
       kft_output_t out = kft_output_init(ofp, NULL);
       kft_run(&in, &out, 0);
       kft_input_destory(&in);

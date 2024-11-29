@@ -49,7 +49,7 @@ Templates:
 
   misc:
   {\{{TAG\}}              get current file position to TAG
-  {\{}TAG\}}              set current file position from TAG
+  \{{}TAG\}}              set current file position from TAG
   \{{-...\}}              comment block
 
 *note* \{{ and \}} are start and end delimiters

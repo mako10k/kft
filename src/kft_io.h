@@ -2,7 +2,7 @@
 #include "kft.h"
 
 #include <assert.h>
-#include <linux/limits.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -342,9 +342,9 @@ static inline int kft_fgetc(kft_input_t *const pi) {
           // COMPLETE DELIMITER
 
           // REWIND PREFETCHED DELIMITER
-          kft_input_rollback(pi, j);
+          kft_input_rollback(pi, j - 1);
           // MARK ESCAPE A CHARACTER
-          pi->esclen = 1;
+          pi->esclen = 0;
           // ESC END0 END1 ...
           // |   |     \__ UNESCAPED
           // |    \_______ ESCAPED
@@ -356,9 +356,9 @@ static inline int kft_fgetc(kft_input_t *const pi) {
           // INCOMPLETE DELIMITER
 
           // REWIND PREFETCHED DELIMITER (AND ESCAPE CHARACTER)
-          kft_input_rollback(pi, j + 1);
+          kft_input_rollback(pi, j);
           // MARK ESCAPE TWO CHARACTERS
-          pi->esclen = 2;
+          pi->esclen = 1;
           // ESC END0 END1 ...
           // |   |     \__ UNESCAPED
           // |    \_______ ESCAPED
@@ -390,9 +390,9 @@ static inline int kft_fgetc(kft_input_t *const pi) {
           // COMPLETE DELIMITER
 
           // REWIND PREFETCHED DELIMITER
-          kft_input_rollback(pi, j);
+          kft_input_rollback(pi, j - 1);
           // MARK ESCAPE A CHARACTER
-          pi->esclen = 1;
+          pi->esclen = 0;
           // ESC STR0 STR1 ...
           // |   |     \__ UNESCAPED
           // |    \_______ ESCAPED
@@ -404,9 +404,9 @@ static inline int kft_fgetc(kft_input_t *const pi) {
           // INCOMPLETE DELIMITER
 
           // REWIND PREFETCHED DELIMITER (AND ESCAPE CHARACTER)
-          kft_input_rollback(pi, j + 1);
+          kft_input_rollback(pi, j);
           // MARK ESCAPE TWO CHARACT
-          pi->esclen = 2;
+          pi->esclen = 1;
           // ESC STR0 STR1 ...
           // |   |     \__ UNESCAPED
           // |    \_______ ESCAPED
@@ -446,10 +446,7 @@ static inline int kft_fgetc(kft_input_t *const pi) {
         kft_input_commit(pi, j);
         return KFT_CH_END;
       } else {
-        // INCOMPLETE DELIMITER
         kft_input_rollback(pi, j - 1);
-        kft_input_commit(pi, 1);
-        return ch;
       }
     }
 
@@ -477,8 +474,6 @@ static inline int kft_fgetc(kft_input_t *const pi) {
       } else {
         // INCOMPLETE DELIMITER
         kft_input_rollback(pi, j - 1);
-        kft_input_commit(pi, 1);
-        return ch;
       }
     }
 
