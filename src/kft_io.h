@@ -255,6 +255,14 @@ static inline kft_output_t kft_output_init(FILE *const fp_out,
   };
 }
 
+static inline void kft_output_flush(kft_output_t *const po) {
+  fflush(po->fp_out);
+}
+
+static inline void kft_output_rewind(kft_output_t *const po) {
+  rewind(po->fp_out);
+}
+
 static inline void kft_output_close(kft_output_t *const po) {
   if (po->mode & KFT_OUTPUT_MODE_STREAM_OPENED) {
     fclose(po->fp_out);

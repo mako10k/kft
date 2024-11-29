@@ -17,10 +17,6 @@
 #define KFT_PFL_COMMENT 1
 #define KFT_PFL_RETURN_ON_EOL 2
 
-#define KFT_RETURN_BY_EOL 1
-#define KFT_RETURN_BY_EOF 2
-#define KFT_RETURN_BY_DELIM 3
-
 typedef struct kft_context {
   kft_input_t *pi;
   kft_output_t *po;
@@ -99,23 +95,40 @@ static int kft_run_write_var(const char *const name, kft_input_t *const pi,
 static int ktf_run_var(kft_input_t *const pi, kft_output_t *const po,
                        int flags) {
   kft_output_t out_name = kft_output_init(NULL, NULL);
-  const int ret = kft_run(pi, &out_name, flags);
-  if (ret != KFT_SUCCESS) {
-    kft_output_destory(&out_name);
-    return KFT_FAILURE;
+  int ret;
+  while (1) {
+    ret = kft_run(pi, &out_name, flags | KFT_PFL_RETURN_ON_EOL);
+    if (ret == KFT_FAILURE) {
+      break;
+    }
+    kft_output_flush(&out_name);
+    const char *const name = out_name.pmembuf->membuf;
+    char *value = strchr(name, '=');
+    if (value != NULL) {
+      *(value++) = '\0';
+      const int ret2 = kft_run_read_var(name, value, pi, po, flags);
+      if (ret2 == KFT_FAILURE) {
+        fprintf(stderr, "%s:%zu:%zu: $%s=%s: %m\n", pi->filename_in,
+                pi->row_in + 1, pi->col_in + 1, name, value);
+        ret = KFT_FAILURE;
+        break;
+      }
+    } else {
+      const int ret2 = kft_run_write_var(name, pi, po);
+      if (ret2 == KFT_FAILURE) {
+        fprintf(stderr, "%s:%zu:%zu: $%s: %m\n", pi->filename_in,
+                pi->row_in + 1, pi->col_in + 1, name);
+        ret = KFT_FAILURE;
+        break;
+      }
+    }
+    if (ret == KFT_SUCCESS) {
+      break;
+    }
+    kft_output_rewind(&out_name);
   }
-  kft_output_close(&out_name);
-  const char *const name = out_name.pmembuf->membuf;
-  char *value = strchr(name, '=');
-  if (value != NULL) {
-    *(value++) = '\0';
-    const int ret = kft_run_read_var(name, value, pi, po, flags);
-    kft_output_destory(&out_name);
-    return ret;
-  }
-  const int ret2 = kft_run_write_var(name, pi, po);
   kft_output_destory(&out_name);
-  return ret2;
+  return ret;
 }
 
 static inline int ktf_run_write(kft_input_t *const pi, int flags) {
