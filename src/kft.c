@@ -577,6 +577,7 @@ int main(int argc, char *argv[]) {
       break;
 
     case 'h': {
+      setenv("PROG", program_invocation_short_name, 1);
       kft_input_spec_t spec = kft_input_spec_init(
           KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
       kft_input_t in = kft_input_init(NULL, DATADIR "/kft_help.kft", &spec);

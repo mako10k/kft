@@ -1,4 +1,30 @@
-Usage: {{$ARGV0}} [Options] [VarSpecs] [file ...]
+Usage:
+  {{$PROG}} [Options] [VarSpecs] [file ...]
+
+  <parse stdin>
+  {{$PROG}}
+
+  <parse stdin with additional vars>
+  {{$PROG}} VAR1=VAL1 VAR2=VAL2 ...
+
+  <parse file>
+  {{$PROG}} file
+
+  <parse file with additional vars>
+  {{$PROG}} VAR1=VAL1 VAR2=VAL2 ... file
+
+  <parse files>
+  {{$PROG}} file1 file2 ...
+
+  <evaluate with commandline>
+  {{$PROG}} -e'TMP1' --e'TMP2' ...
+
+  <print help>
+  {{$PROG}} --help
+
+  <print version>
+  {{$PROG}} --version
+
 Options:
   -e, --eval=STRING     evaluate STRING
   -s, --shell=STRING    use shell STRING [$KFT_SHELL, $SHELL or /bin/sh]
@@ -12,8 +38,6 @@ Options:
 VarSpecs:
   NAME=VAL              set variable NAME with VAL
   NAME=                 unset variable NAME
-
-*note* set or unset for environment variable when NAME is exported
 
 Environment Variables:
   $KFT_SHELL            shell command (run this when \{{!...\}})
@@ -52,6 +76,5 @@ Templates:
   \{{@TAG\}}              goto TAG (goto TAG only once after set TAG)
   \{{-...\}}              comment block
   \{{...\}}               nest Template
-  ...\}}                  exit program (unbalanced close delimiter)           
+  ...\}}                  exit program (unbalanced close delimiter)
 
-*note* \{{ and \}} are start and end delimiters
