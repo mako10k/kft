@@ -54,7 +54,7 @@ static int kft_run_read_var(const char *const name, const char *const value,
     const int ret = kft_run_read_var_input(value, pi->pspec, po, flags);
     if (ret == KFT_FAILURE) {
       fprintf(stderr, "%s:%zu:%zu: $%s=%s: %m\n", pi->filename_in,
-              pi->row_in + 1, pi->col_in, name, value);
+              pi->row_in + 1, pi->col_in + 1, name, value);
       return KFT_FAILURE;
     }
     return ret;
@@ -62,7 +62,7 @@ static int kft_run_read_var(const char *const name, const char *const value,
     const int ret = kft_run_read_var_output(value, pi, flags);
     if (ret == KFT_FAILURE) {
       fprintf(stderr, "%s:%zu:%zu: $%s=%s: %m\n", pi->filename_in,
-              pi->row_in + 1, pi->col_in, name, value);
+              pi->row_in + 1, pi->col_in + 1, name, value);
       return KFT_FAILURE;
     }
     return ret;
@@ -371,14 +371,12 @@ static int kft_run_tag_set(kft_input_t *const pi, int flags) {
   }
   kft_output_close(&out_tag);
   const char *const tag = out_tag.pmembuf->membuf;
-  char tagspec[256];
   size_t row_in = 0;
   size_t col_in = 0;
   long pos = kft_ftell(pi, &row_in, &col_in);
-  snprintf(tagspec, sizeof(tagspec), "%ld:%zu:%zu", pos, row_in + 1, col_in);
-  ret = setenv(tag, tagspec, 1);
+  int ret2 = kft_input_tag_set(pi, tag, pos, row_in, col_in, 1);
   kft_output_destory(&out_tag);
-  return ret == 0 ? KFT_SUCCESS : KFT_FAILURE;
+  return ret2 == 0 ? KFT_SUCCESS : KFT_FAILURE;
 }
 
 static int kft_run_tag_goto(kft_input_t *const pi, int flags) { // GOTO TAG
@@ -390,25 +388,26 @@ static int kft_run_tag_goto(kft_input_t *const pi, int flags) { // GOTO TAG
   }
   kft_output_close(&out_tag);
   const char *const tag = out_tag.pmembuf->membuf;
-  char *tagspec = getenv(tag);
-  if (tagspec == NULL) { // FOLLOWING TAG
-    // TODO: implement
-    return KFT_FAILURE;
-  }
-  long pos = 0;
-  size_t row_in = 0;
-  size_t col_in = 0;
-  int nret = sscanf(tagspec, "%ld:%zu:%zu", &pos, &row_in, &col_in);
-  if (nret != 3) {
-    fprintf(stderr, "%s:%zu:%zu: @%s: invalid tag\n", pi->filename_in,
-            pi->row_in + 1, pi->col_in, tag);
+  kft_input_tagent_t *ptagent = kft_input_tag_get(pi, tag);
+  if (ptagent == NULL) {
+    fprintf(stderr, "%s:%zu:%zu: %s: tag not found\n", pi->filename_in,
+            pi->row_in + 1, pi->col_in + 1, tag);
     kft_output_destory(&out_tag);
     return KFT_FAILURE;
   }
+  if (ptagent->count >= ptagent->max_count) {
+    kft_output_destory(&out_tag);
+    return KFT_SUCCESS;
+  }
+  ptagent->count++;
 
-  ret = kft_fseek(pi, pos, row_in, col_in);
+  int ret2 = kft_fseek(pi, ptagent->offset, ptagent->row, ptagent->col);
+  if (ret2 != KFT_SUCCESS) {
+    fprintf(stderr, "%s:%zu:%zu: %s: seek failed\n", pi->filename_in,
+            pi->row_in + 1, pi->col_in + 1, tag);
+  }
   kft_output_destory(&out_tag);
-  return ret;
+  return ret2;
 }
 
 static int kft_run_start(kft_input_t *const pi, kft_output_t *const po,
@@ -431,11 +430,11 @@ static int kft_run_start(kft_input_t *const pi, kft_output_t *const po,
     kft_input_commit(pi, 1);
     return kft_run_hash(pi, po, flags);
 
-  case '{':
+  case ':':
     kft_input_commit(pi, 1);
     return kft_run_tag_set(pi, flags);
 
-  case '}':
+  case '@':
     kft_input_commit(pi, 1);
     return kft_run_tag_goto(pi, flags);
 

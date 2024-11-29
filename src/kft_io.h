@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <search.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -18,6 +19,15 @@ typedef struct kft_input_spec {
   const char *delim_st;
   const char *delim_en;
 } kft_input_spec_t;
+
+typedef struct kft_input_tagent {
+  char *key;
+  long offset;
+  size_t row;
+  size_t col;
+  int count;
+  int max_count;
+} kft_input_tagent_t;
 
 typedef struct kft_input {
   const int mode;
@@ -35,6 +45,7 @@ typedef struct kft_input {
   size_t bufpos_prefetched;
   int esclen;
   const kft_input_spec_t *const pspec;
+  void *tags;
 } kft_input_t;
 
 typedef struct kft_output_mem {
@@ -120,7 +131,69 @@ static inline kft_input_t kft_input_init(FILE *const fp_in,
       .bufpos_prefetched = 0,
       .esclen = 0,
       .pspec = pspec,
+      .tags = NULL,
   };
+}
+
+static int kft_input_tagentcmp(const kft_input_tagent_t *const ptag1,
+                               const kft_input_tagent_t *const ptag2) {
+  return strcmp(ptag1->key, ptag2->key);
+}
+
+static void kft_input_tagentfree(kft_input_tagent_t *const ptag) {
+  free(ptag->key);
+  free((void *)ptag);
+}
+
+static inline int kft_input_tag_set(kft_input_t *const pi,
+                                    const char *const key, const long offset,
+                                    const size_t row, const size_t col,
+                                    int max_count) {
+  kft_input_tagent_t keyent = {.key = (char *)key,
+                               .offset = 0,
+                               .row = 0,
+                               .col = 0,
+                               .count = 0,
+                               .max_count = 0};
+  kft_input_tagent_t **pptagent = (kft_input_tagent_t **)tsearch(
+      (void *)&keyent, &pi->tags,
+      (int (*)(const void *, const void *))kft_input_tagentcmp);
+  if (*pptagent == &keyent) {
+    *pptagent = (kft_input_tagent_t *)malloc(sizeof(kft_input_tagent_t));
+    if (*pptagent == NULL) {
+      return KFT_FAILURE;
+    }
+    (*pptagent)->key = strdup(key);
+  }
+  (*pptagent)->offset = offset;
+  (*pptagent)->row = row;
+  (*pptagent)->col = col;
+  (*pptagent)->count = 0;
+  (*pptagent)->max_count = max_count;
+  return KFT_SUCCESS;
+}
+
+static inline kft_input_tagent_t *kft_input_tag_get(kft_input_t *const pi,
+                                                    const char *const key) {
+  kft_input_tagent_t keyent = {.key = (char *)key,
+                               .offset = 0,
+                               .row = 0,
+                               .col = 0,
+                               .count = 0,
+                               .max_count = 0};
+  kft_input_tagent_t **pptagent = (kft_input_tagent_t **)tfind(
+      (void *)&keyent, &pi->tags,
+      (int (*)(const void *, const void *))kft_input_tagentcmp);
+  if (pptagent == NULL) {
+    return NULL;
+  }
+  return *pptagent;
+}
+
+static inline void kft_input_tag_destory(kft_input_t *const pi) {
+  if (pi->tags != NULL) {
+    tdestroy(pi->tags, (void (*)(void *))kft_input_tagentfree);
+  }
 }
 
 static inline void kft_input_destory(kft_input_t *const pi) {
@@ -131,6 +204,7 @@ static inline void kft_input_destory(kft_input_t *const pi) {
     free((char *)pi->filename_in);
   }
   free(pi->buf);
+  kft_input_tag_destory(pi);
 }
 
 static inline kft_output_t kft_output_init(FILE *const fp_out,
@@ -496,7 +570,7 @@ static inline long kft_ftell(kft_input_t *const pi, size_t *prow_in,
 
 static inline int kft_fseek(kft_input_t *const pi, long offset, size_t row_in,
                             size_t col_in) {
-  int ret = fseek(pi->fp_in, offset, SEEK_CUR);
+  int ret = fseek(pi->fp_in, offset, SEEK_SET);
   if (ret != 0) {
     return KFT_FAILURE;
   }
