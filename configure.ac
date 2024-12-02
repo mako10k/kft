@@ -11,8 +11,6 @@ AC_PROG_CC
 
 AM_INIT_AUTOMAKE([foreign])
 
-AC_USE_SYSTEM_EXTENSIONS
-
 # Checks for libraries.
 PKG_CHECK_MODULES(GC, [bdw-gc])
 
@@ -23,6 +21,8 @@ AC_CHECK_HEADERS([unistd.h])
 AC_TYPE_PID_T
 AC_TYPE_SIZE_T
 AC_TYPE_SSIZE_T
+AC_C_RESTRICT
+AC_USE_SYSTEM_EXTENSIONS
 
 # Checks for library functions.
 AC_FUNC_FORK
