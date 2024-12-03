@@ -6,6 +6,8 @@ AC_INIT([kft],[0.0.1],[mako10k@mk10.org])
 AC_CONFIG_SRCDIR([src/kft.c])
 AC_CONFIG_HEADERS([config.h])
 
+AC_USE_SYSTEM_EXTENSIONS
+
 # Checks for programs.
 AC_PROG_CC
 
@@ -22,7 +24,6 @@ AC_TYPE_PID_T
 AC_TYPE_SIZE_T
 AC_TYPE_SSIZE_T
 AC_C_RESTRICT
-AC_USE_SYSTEM_EXTENSIONS
 
 # Checks for library functions.
 AC_FUNC_FORK
