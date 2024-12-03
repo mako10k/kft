@@ -1,4 +1,5 @@
 #pragma once
+
 #include "kft.h"
 #include <stdio.h>
 
@@ -8,37 +9,68 @@
 #define KFT_CH_END 0x101
 #define KFT_CH_BEGIN 0x102
 
+/**
+ * The input specification.
+ */
 typedef struct kft_input_spec {
+  /** escape character */
   int ch_esc;
+  /** start delimiter */
   const char *delim_st;
+  /** end delimiter */
   const char *delim_en;
 } kft_input_spec_t;
 
+/**
+ * The tag information.
+ */
 typedef struct kft_input_tagent {
+  /** key */
   char *key;
+  /** offset */
   long offset;
+  /** row */
   size_t row;
+  /** column */
   size_t col;
+  /** count */
   int count;
+  /** max count */
   int max_count;
 } kft_input_tagent_t;
 
-typedef struct kft_input {
-  const int mode;
 #define KFT_INPUT_MODE_STREAM_OPENED 1
 #define KFT_INPUT_MODE_MALLOC_FILENAME 2
 
+/**
+ * The input information.
+ */
+typedef struct kft_input {
+  /** mode */
+  const int mode;
+  /** file pointer */
   FILE *const fp_in;
+  /** filename */
   const char *const filename_in;
+  /** row */
   size_t row_in;
+  /** column */
   size_t col_in;
+  /** buffer */
   char *buf;
+  /** buffer size */
   size_t bufsize;
+  /** buffer position (committed) */
   size_t bufpos_committed;
+  /** buffer position (fetched) */
   size_t bufpos_fetched;
+  /** buffer position (prefetched) */
   size_t bufpos_prefetched;
+  /** chars count for extra escape */
   int esclen;
+  /** input specification */
   const kft_input_spec_t *const pspec;
+  /** tags */
   void *tags;
 } kft_input_t;
 
