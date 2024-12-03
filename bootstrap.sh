@@ -1,10 +1,13 @@
 #!/bin/bash
 
 export CC=clang
+user=$(id -nu)
+group=$(id -ng)
 
 set -ex
 
-autoreconf --force --install --verbose
+sudo chown -R $user:$group "$(dirname "$0")"
+autoreconf -fiv
 ./configure
-make
+make clean all
 sudo make install
