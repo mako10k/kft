@@ -10,6 +10,14 @@ void *kft_malloc(size_t size) {
   return ptr;
 }
 
+void *kft_malloc_atomic(size_t size) {
+  void *ptr = GC_MALLOC_ATOMIC(size);
+  if (!ptr) {
+    kft_error("Out of memory");
+  }
+  return ptr;
+}
+
 void *kft_realloc(void *ptr, size_t size) {
   void *new_ptr = GC_REALLOC(ptr, size);
   if (!new_ptr) {
@@ -18,10 +26,12 @@ void *kft_realloc(void *ptr, size_t size) {
   return new_ptr;
 }
 
-void *kft_malloc_atomic(size_t size) {
-  void *ptr = GC_MALLOC_ATOMIC(size);
-  if (!ptr) {
+void kft_free(void *ptr) { GC_FREE(ptr); }
+
+char *kft_strdup(const char *s) {
+  char *new_s = GC_STRDUP(s);
+  if (!new_s) {
     kft_error("Out of memory");
   }
-  return ptr;
+  return new_s;
 }

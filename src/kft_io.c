@@ -1,4 +1,6 @@
 #include "kft_io.h"
+#include "kft_error.h"
+#include "kft_malloc.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -40,18 +42,17 @@ kft_input_t kft_input_init(FILE *const fp_in, const char *const filename_in,
       // AUTO DETECT FILENAME
       int fd_in_new = fileno(fp_in_new);
       assert(fd_in_new >= 0);
-      filename_in_new = (char *)malloc(PATH_MAX);
+      filename_in_new = (char *)kft_malloc_atomic(PATH_MAX);
       kft_fd_to_path(fd_in_new, filename_in_new, PATH_MAX);
       filename_in_new =
-          (char *)realloc(filename_in_new, strlen(filename_in_new) + 1);
+          (char *)kft_realloc(filename_in_new, strlen(filename_in_new) + 1);
       mode |= KFT_INPUT_MODE_MALLOC_FILENAME;
     }
   } else if (filename_in_new != NULL) {
     // OPEN FILE
     fp_in_new = fopen(filename_in_new, "r");
     if (fp_in_new == NULL) {
-      perror(filename_in_new);
-      exit(EXIT_FAILURE);
+      kft_error("%s: %m\n", filename_in_new);
     }
     mode |= KFT_INPUT_MODE_STREAM_OPENED;
   } else {
@@ -82,8 +83,8 @@ static int kft_input_tagentcmp(const kft_input_tagent_t *const ptag1,
 }
 
 static void kft_input_tagentfree(kft_input_tagent_t *const ptag) {
-  free(ptag->key);
-  free((void *)ptag);
+  kft_free(ptag->key);
+  kft_free((void *)ptag);
 }
 
 int kft_input_tag_set(kft_input_t *const pi, const char *const key,
@@ -99,11 +100,8 @@ int kft_input_tag_set(kft_input_t *const pi, const char *const key,
       (void *)&keyent, &pi->tags,
       (int (*)(const void *, const void *))kft_input_tagentcmp);
   if (*pptagent == &keyent) {
-    *pptagent = (kft_input_tagent_t *)malloc(sizeof(kft_input_tagent_t));
-    if (*pptagent == NULL) {
-      return KFT_FAILURE;
-    }
-    (*pptagent)->key = strdup(key);
+    *pptagent = (kft_input_tagent_t *)kft_malloc(sizeof(kft_input_tagent_t));
+    (*pptagent)->key = kft_strdup(key);
   }
   (*pptagent)->offset = offset;
   (*pptagent)->row = row;
@@ -141,9 +139,9 @@ void kft_input_destory(kft_input_t *const pi) {
     fclose(pi->fp_in);
   }
   if (pi->mode & KFT_INPUT_MODE_MALLOC_FILENAME) {
-    free((char *)pi->filename_in);
+    kft_free((char *)pi->filename_in);
   }
-  free(pi->buf);
+  kft_free(pi->buf);
   kft_input_tag_destory(pi);
 }
 
@@ -160,28 +158,26 @@ kft_output_t kft_output_init(FILE *const fp_out,
       // AUTO DETECT FILENAME
       int fd_out_new = fileno(fp_out_new);
       assert(fd_out_new >= 0);
-      filename_out_new = (char *)malloc(PATH_MAX);
+      filename_out_new = (char *)kft_malloc_atomic(PATH_MAX);
       kft_fd_to_path(fd_out_new, filename_out_new, PATH_MAX);
       filename_out_new =
-          (char *)realloc(filename_out_new, strlen(filename_out_new) + 1);
+          (char *)kft_realloc(filename_out_new, strlen(filename_out_new) + 1);
       mode_new |= KFT_OUTPUT_MODE_MALLOC_FILENAME;
     }
   } else if (filename_out_new != NULL) {
     // OPEN FILE
     fp_out_new = fopen(filename_out_new, "w");
     if (fp_out_new == NULL) {
-      perror(filename_out_new);
-      exit(EXIT_FAILURE);
+      kft_error("%s: %m\n", filename_out_new);
     }
     mode_new |= KFT_OUTPUT_MODE_STREAM_OPENED;
   } else {
     // OPEN MEMORY STREAM
-    pmembuf_new = (kft_output_mem_t *)malloc(sizeof(kft_output_mem_t));
-    if (pmembuf_new == NULL) {
-      perror("malloc");
-      exit(EXIT_FAILURE);
-    }
+    pmembuf_new = (kft_output_mem_t *)kft_malloc(sizeof(kft_output_mem_t));
     fp_out_new = open_memstream(&pmembuf_new->membuf, &pmembuf_new->membufsize);
+    if (fp_out_new == NULL) {
+      kft_error("%s: %m\n", "open_memstream");
+    }
     filename_out_new = (char *)"<inline>";
     mode_new |= KFT_OUTPUT_MODE_MALLOC_MEMBUF;
     mode_new |= KFT_OUTPUT_MODE_STREAM_OPENED;
@@ -211,11 +207,11 @@ void kft_output_destory(kft_output_t *const po) {
     fclose(po->fp_out);
   }
   if (po->mode & KFT_OUTPUT_MODE_MALLOC_FILENAME) {
-    free((char *)po->filename_out);
+    kft_free((char *)po->filename_out);
   }
   if (po->mode & KFT_OUTPUT_MODE_MALLOC_MEMBUF) {
-    free(po->pmembuf->membuf);
-    free(po->pmembuf);
+    free(po->pmembuf->membuf); // allocate by memstream
+    kft_free(po->pmembuf);
   }
 }
 
@@ -267,10 +263,7 @@ int kft_fetch_raw(kft_input_t *const pi) {
     } else {
       bufsize = bufsize * 3 / 2;
     }
-    char *const buf = (char *)realloc(pi->buf, bufsize);
-    if (buf == NULL) {
-      return EOF;
-    }
+    char *const buf = (char *)kft_realloc(pi->buf, bufsize);
     pi->buf = buf;
     pi->bufsize = bufsize;
   }
