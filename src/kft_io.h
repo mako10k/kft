@@ -2,24 +2,13 @@
 
 #include "kft.h"
 #include <stdio.h>
+#include "kft_io_input_spec.h"
 
 #define KFT_CH_NORM(ch) (ch)
 #define KFT_CH_ISNORM(ch) ((ch) <= 0xff)
 #define KFT_CH_EOL 0x100
 #define KFT_CH_END 0x101
 #define KFT_CH_BEGIN 0x102
-
-/**
- * The input specification.
- */
-typedef struct kft_input_spec {
-  /** escape character */
-  int ch_esc;
-  /** start delimiter */
-  const char *delim_st;
-  /** end delimiter */
-  const char *delim_en;
-} kft_input_spec_t;
 
 /**
  * The tag information.
@@ -89,9 +78,6 @@ typedef struct kft_output {
   kft_output_mem_t *pmembuf;
   const char *const filename_out;
 } kft_output_t;
-
-kft_input_spec_t kft_input_spec_init(int ch_esc, const char *delim_st,
-                                     const char *delim_en);
 
 const char *kft_fd_to_path(const int fd, char *const buf, const size_t buflen);
 

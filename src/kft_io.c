@@ -1,5 +1,6 @@
 #include "kft_io.h"
 #include "kft_error.h"
+#include "kft_io_input_spec.h"
 #include "kft_malloc.h"
 
 #include <assert.h>
@@ -8,16 +9,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-
-kft_input_spec_t kft_input_spec_init(int ch_esc, const char *delim_st,
-                                     const char *delim_en) {
-  kft_input_spec_t spec = {
-      .ch_esc = ch_esc,
-      .delim_st = delim_st,
-      .delim_en = delim_en,
-  };
-  return spec;
-}
 
 const char *kft_fd_to_path(const int fd, char *const buf, const size_t buflen) {
   char path_fd[32];
@@ -301,6 +292,9 @@ void kft_input_commit(kft_input_t *const pi, size_t count) {
 }
 
 int kft_fgetc(kft_input_t *const pi) {
+  const int ch_esc = kft_input_spec_get_ch_esc(pi->pspec);
+  const char *const delim_st = kft_input_spec_get_delim_st(pi->pspec);
+  const char *const delim_en = kft_input_spec_get_delim_en(pi->pspec);
   while (1) {
     // FETCH NEXT CHARACTER
     const int ch = kft_fetch_raw(pi);
@@ -317,7 +311,7 @@ int kft_fgetc(kft_input_t *const pi) {
     // --------------------------
     // ESCAPE CHARACTER
     // --------------------------
-    if (ch == pi->pspec->ch_esc) {
+    if (ch == ch_esc) {
 
       const int ch_esc_next = kft_fetch_raw(pi);
       if (ch_esc_next == EOF) {
@@ -326,30 +320,30 @@ int kft_fgetc(kft_input_t *const pi) {
         return ch;
       }
 
-      if (ch_esc_next == '\n' || ch_esc_next == pi->pspec->ch_esc) {
+      if (ch_esc_next == '\n' || ch_esc_next == ch_esc) {
         // DISCARD ESCAPE AND ACCEPT ESCAPED CHARACTER
         kft_input_commit(pi, 2);
         return ch_esc_next;
       }
 
-      if (ch_esc_next == pi->pspec->delim_en[0]) {
+      if (ch_esc_next == delim_en[0]) {
 
         // CHECK FOLLOWING DELIMITER
         size_t i = 1;
         size_t j = 1;
         int ch3 = EOF;
-        while (pi->pspec->delim_en[i] != '\0') {
+        while (delim_en[i] != '\0') {
           ch3 = kft_fetch_raw(pi);
           if (ch3 != EOF) {
             j++;
           }
-          if (ch3 != pi->pspec->delim_en[i]) {
+          if (ch3 != delim_en[i]) {
             break;
           }
           i++;
         }
 
-        if (pi->pspec->delim_en[i] == '\0') {
+        if (delim_en[i] == '\0') {
           // COMPLETE DELIMITER
 
           // REWIND PREFETCHED DELIMITER
@@ -380,24 +374,24 @@ int kft_fgetc(kft_input_t *const pi) {
         }
       }
 
-      if (ch_esc_next == pi->pspec->delim_st[0]) {
+      if (ch_esc_next == delim_st[0]) {
 
         // CHECK FOLLOWING DELIMITER
         size_t i = 1;
         size_t j = 1;
         int ch3 = EOF;
-        while (pi->pspec->delim_st[i] != '\0') {
+        while (delim_st[i] != '\0') {
           ch3 = kft_fetch_raw(pi);
           if (ch3 != EOF) {
             j++;
           }
-          if (ch3 != pi->pspec->delim_st[i]) {
+          if (ch3 != delim_st[i]) {
             break;
           }
           i++;
         }
 
-        if (pi->pspec->delim_st[i] == '\0') {
+        if (delim_st[i] == '\0') {
           // COMPLETE DELIMITER
 
           // REWIND PREFETCHED DELIMITER
@@ -435,24 +429,24 @@ int kft_fgetc(kft_input_t *const pi) {
       return ch;
     }
 
-    if (ch == pi->pspec->delim_en[0]) {
+    if (ch == delim_en[0]) {
 
       // CHECK FOLLOWING DELIMITER
       size_t i = 1;
       size_t j = 1;
       int ch2 = EOF;
-      while (pi->pspec->delim_en[i] != '\0') {
+      while (delim_en[i] != '\0') {
         ch2 = kft_fetch_raw(pi);
         if (ch2 != EOF) {
           j++;
         }
-        if (ch2 != pi->pspec->delim_en[i]) {
+        if (ch2 != delim_en[i]) {
           break;
         }
         i++;
       }
 
-      if (pi->pspec->delim_en[i] == '\0') {
+      if (delim_en[i] == '\0') {
         // COMPLETE DELIMITER
         kft_input_commit(pi, j);
         return KFT_CH_END;
@@ -461,24 +455,24 @@ int kft_fgetc(kft_input_t *const pi) {
       }
     }
 
-    if (ch == pi->pspec->delim_st[0]) {
+    if (ch == delim_st[0]) {
 
       // CHECK FOLLOWING DELIMITER
       size_t i = 1;
       size_t j = 1;
       int ch2 = EOF;
-      while (pi->pspec->delim_st[i] != '\0') {
+      while (delim_st[i] != '\0') {
         ch2 = kft_fetch_raw(pi);
         if (ch2 != EOF) {
           j++;
         }
-        if (ch2 != pi->pspec->delim_st[i]) {
+        if (ch2 != delim_st[i]) {
           break;
         }
         i++;
       }
 
-      if (pi->pspec->delim_st[i] == '\0') {
+      if (delim_st[i] == '\0') {
         // COMPLETE DELIMITER
         kft_input_commit(pi, j);
         return KFT_CH_BEGIN;

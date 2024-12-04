@@ -591,12 +591,13 @@ int main(int argc, char *argv[]) {
 
     case 'h': {
       setenv("PROG", program_invocation_short_name, 1);
-      kft_input_spec_t spec = kft_input_spec_init(
+      kft_input_spec_t *pis = kft_input_spec_new(
           KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
-      kft_input_t in = kft_input_init(NULL, DATADIR "/kft_help.kft", &spec);
+      kft_input_t in = kft_input_init(NULL, DATADIR "/kft_help.kft", pis);
       kft_output_t out = kft_output_init(ofp, NULL);
       kft_run(&in, &out, 0);
       kft_input_destory(&in);
+      kft_input_spec_delete(pis);
       kft_output_destory(&out);
       return EXIT_SUCCESS;
     }
@@ -671,7 +672,7 @@ int main(int argc, char *argv[]) {
     opt_end = KFT_OPTDEF_END;
   }
 
-  kft_input_spec_t spec = kft_input_spec_init(opt_escape, opt_begin, opt_end);
+  kft_input_spec_t *pis = kft_input_spec_new(opt_escape, opt_begin, opt_end);
   kft_output_t out = kft_output_init(ofp, NULL);
 
   for (size_t i = 0; i < nevals; i++) {
@@ -679,15 +680,17 @@ int main(int argc, char *argv[]) {
     if (fp_mem == NULL) {
       perror("fmemopen");
       kft_output_destory(&out);
+      kft_input_spec_delete(pis);
       return EXIT_FAILURE;
     }
     char filename_buf_in[PATH_MAX];
     snprintf(filename_buf_in, sizeof(filename_buf_in), "<eval:%zu>", i + 1);
-    kft_input_t in = kft_input_init(fp_mem, filename_buf_in, &spec);
+    kft_input_t in = kft_input_init(fp_mem, filename_buf_in, pis);
     int ret2 = kft_run(&in, &out, 0);
     kft_input_destory(&in);
     if (ret2 != KFT_SUCCESS) {
       kft_output_destory(&out);
+      kft_input_spec_delete(pis);
       return EXIT_FAILURE;
     }
   }
@@ -696,12 +699,14 @@ int main(int argc, char *argv[]) {
 
     if (nevals > 0 && isatty(fileno(stdin))) {
       kft_output_destory(&out);
+      kft_input_spec_delete(pis);
       return EXIT_SUCCESS;
     }
-    kft_input_t in = kft_input_init(stdin, NULL, &spec);
+    kft_input_t in = kft_input_init(stdin, NULL, pis);
 
     const int ret = kft_run(&in, &out, 0);
     kft_input_destory(&in);
+    kft_input_spec_delete(pis);
     kft_output_destory(&out);
     if (ret != KFT_SUCCESS) {
       return EXIT_FAILURE;
@@ -720,15 +725,17 @@ int main(int argc, char *argv[]) {
       fp = NULL;
       filename = file;
     }
-    kft_input_t in = kft_input_init(fp, filename, &spec);
+    kft_input_t in = kft_input_init(fp, filename, pis);
 
     const int ret = kft_run(&in, &out, 0);
     kft_input_destory(&in);
     if (ret != KFT_SUCCESS) {
       kft_output_destory(&out);
+      kft_input_spec_delete(pis);
       return EXIT_FAILURE;
     }
   }
   kft_output_destory(&out);
+  kft_input_spec_delete(pis);
   return EXIT_SUCCESS;
 }

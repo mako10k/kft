@@ -6,6 +6,7 @@ kft_SOURCES = \
   kft.c \
   kft_error.c \
   kft_io.c \
+  kft_io_input_spec.c \
   kft_malloc.c \
   kft_misc.c \
   kft_memstream.c \
