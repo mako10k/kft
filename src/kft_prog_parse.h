@@ -2,6 +2,7 @@
 
 #include "kft.h"
 #include "kft_io.h"
+#include "kft_io_input.h"
 #include "kft_prog.h"
 
 #define KFT_PARSE_ERROR -1
