@@ -1,3 +1,5 @@
+kft : K Fast Template Engine
+
 Usage:
   {{$PROG}} [Options] [VarSpecs] [file ...]
 
@@ -76,5 +78,5 @@ Templates:
   \{{@TAG\}}              goto TAG (goto TAG only once after set TAG)
   \{{-...\}}              comment block
   \{{...\}}               nest Template
-  ...\}}                  exit program (unbalanced close delimiter)
+  ...\}}                 exit program (unbalanced close delimiter)
 

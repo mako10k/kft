@@ -7,7 +7,8 @@ group=$(id -ng)
 set -ex
 
 sudo chown -R $user:$group "$(dirname "$0")"
+
 autoreconf -fiv
-./configure
+./configure --enable-debug
 make clean all
 sudo make install

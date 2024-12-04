@@ -14,14 +14,12 @@
 struct kft_input {
   /** mode */
   int mode;
-  /** file pointer */
+  /** input stream */
   FILE *fp_in;
   /** filename */
-  const char *filename_in;
-  /** row */
-  size_t row_in;
-  /** column */
-  size_t col_in;
+  const char *filename;
+  /** position */
+  kft_ipos_t ipos;
   /** buffer */
   char *buf;
   /** buffer size */
@@ -35,13 +33,13 @@ struct kft_input {
   /** chars count for extra escape */
   int esclen;
   /** input specification */
-  const kft_ispec_t *pspec;
+  kft_ispec_t ispec;
   /** tags */
   kft_itags_t *ptags;
 };
 
 kft_input_t *kft_input_new(FILE *fp_in, const char *filename_in,
-                           const kft_ispec_t *pspec, kft_itags_t *ptags) {
+                           const kft_ispec_t ispec) {
   int mode = 0;
   FILE *fp_in_new = fp_in;
   char *filename_in_new = (char *)filename_in;
@@ -73,17 +71,16 @@ kft_input_t *kft_input_new(FILE *fp_in, const char *filename_in,
   kft_input_t *const pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
   pi->mode = mode;
   pi->fp_in = fp_in_new;
-  pi->filename_in = filename_in_new;
-  pi->row_in = 0;
-  pi->col_in = 0;
+  pi->filename = filename_in_new;
+  pi->ipos = kft_ipos_init(fp_in_new, 0, 0);
   pi->buf = NULL;
   pi->bufsize = 0;
   pi->bufpos_committed = 0;
   pi->bufpos_fetched = 0;
   pi->bufpos_prefetched = 0;
   pi->esclen = 0;
-  pi->pspec = pspec;
-  pi->ptags = ptags;
+  pi->ispec = ispec;
+  pi->ptags = kft_itags_new(fp_in_new);
   return pi;
 }
 
@@ -92,7 +89,7 @@ void kft_input_delete(kft_input_t *pi) {
     fclose(pi->fp_in);
   }
   if (pi->mode & KFT_INPUT_MODE_MALLOC_FILENAME) {
-    kft_free((char *)pi->filename_in);
+    kft_free((char *)pi->filename);
   }
   kft_free(pi->buf);
   kft_free(pi);
@@ -157,16 +154,19 @@ int kft_fetch_raw(kft_input_t *const pi) {
   return ch;
 }
 
-void kft_update_pos(const int ch, kft_input_t *const pi) {
+static void kft_update_pos(const int ch, kft_ipos_t *pipos)
+    __attribute__((nonnull(2)));
+
+static void kft_update_pos(const int ch, kft_ipos_t *pipos) {
   switch (ch) {
   case EOF:
     break;
   case '\n':
-    pi->row_in++;
-    pi->col_in = 0;
+    pipos->row++;
+    pipos->col = 0;
     break;
   default:
-    pi->col_in++;
+    pipos->col++;
   }
 }
 
@@ -178,18 +178,18 @@ void kft_input_rollback(kft_input_t *const pi, size_t count) {
 void kft_input_commit(kft_input_t *const pi, size_t count) {
   assert(count <= pi->bufpos_fetched - pi->bufpos_committed);
   for (size_t i = 0; i < count; i++) {
-    kft_update_pos(pi->buf[pi->bufpos_committed + i], pi);
+    kft_update_pos(pi->buf[pi->bufpos_committed + i], &pi->ipos);
   }
   pi->bufpos_committed += count;
 }
 
-int kft_fgetc(kft_input_t *const pi) {
-  const int ch_esc = kft_ispec_get_ch_esc(pi->pspec);
-  const char *const delim_st = kft_ispec_get_delim_st(pi->pspec);
-  const char *const delim_en = kft_ispec_get_delim_en(pi->pspec);
+int kft_fgetc(kft_input_t *pi) {
+  int ch_esc = kft_ispec_get_ch_esc(pi->ispec);
+  const char *delim_st = kft_ispec_get_delim_st(pi->ispec);
+  const char *delim_en = kft_ispec_get_delim_en(pi->ispec);
   while (1) {
     // FETCH NEXT CHARACTER
-    const int ch = kft_fetch_raw(pi);
+    int ch = kft_fetch_raw(pi);
     if (ch == EOF) {
       return EOF;
     }
@@ -384,20 +384,24 @@ int kft_fgetc(kft_input_t *const pi) {
   }
 }
 
-long kft_ftell(kft_input_t *const pi, size_t *prow_in, size_t *pcol_in) {
-  *prow_in = pi->row_in;
-  *pcol_in = pi->col_in;
-  return ftell(pi->fp_in) - (pi->bufpos_prefetched - pi->bufpos_committed);
+kft_ioffset_t kft_ftell(kft_input_t *pi) {
+  long offset = ftell(pi->fp_in);
+  if (offset == -1) {
+    return (kft_ioffset_t){.ipos = pi->ipos, .offset = -1};
+  }
+  return (kft_ioffset_t){
+      .ipos = pi->ipos,
+      .offset = offset - (pi->bufpos_prefetched - pi->bufpos_committed),
+  };
 }
 
-int kft_fseek(kft_input_t *const pi, long offset, size_t row_in,
-              size_t col_in) {
-  int ret = fseek(pi->fp_in, offset, SEEK_SET);
+int kft_fseek(kft_input_t *pi, kft_ioffset_t ioff) {
+  assert(pi->fp_in == ioff.ipos.fp);
+  int ret = fseek(pi->fp_in, ioff.offset, SEEK_SET);
   if (ret != 0) {
     return KFT_FAILURE;
   }
-  pi->row_in = row_in;
-  pi->col_in = col_in;
+  pi->ipos = ioff.ipos;
   pi->bufpos_committed = 0;
   pi->bufpos_fetched = 0;
   pi->bufpos_prefetched = 0;
@@ -405,14 +409,22 @@ int kft_fseek(kft_input_t *const pi, long offset, size_t row_in,
   return KFT_SUCCESS;
 }
 
-const kft_ispec_t *kft_input_get_spec(kft_input_t *pi) { return pi->pspec; }
+kft_ispec_t kft_input_get_spec(kft_input_t *pi) { return pi->ispec; }
 
 kft_itags_t *kft_input_get_tags(kft_input_t *pi) { return pi->ptags; }
 
 const char *kft_input_get_filename(const kft_input_t *pi) {
-  return pi->filename_in;
+  return pi->filename;
 }
 
-size_t kft_input_get_row(const kft_input_t *pi) { return pi->row_in; }
+size_t kft_input_get_row(const kft_input_t *pi) { return pi->ipos.row; }
 
-size_t kft_input_get_col(const kft_input_t *pi) { return pi->col_in; }
+size_t kft_input_get_col(const kft_input_t *pi) { return pi->ipos.col; }
+
+kft_ipos_t kft_input_get_ipos(const kft_input_t *pi) { return pi->ipos; }
+
+kft_ipos_t kft_ipos_init(FILE *fp, size_t row, size_t col) {
+  return (kft_ipos_t){.fp = fp, .row = row, .col = col};
+}
+
+// vim: ts=2 sw=2 sts=2 et fdm=marker

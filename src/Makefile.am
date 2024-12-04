@@ -28,5 +28,6 @@ kft_CFLAGS = @GC_CFLAGS@
 
 data_DATA = kft_help.kft
 
-CFLAGS = -Wall -Wextra -Werror -g -O3 -flto
+DEBUG_CFLAGS = @DEBUG_CFLAGS@
+CFLAGS = -Wall -Wextra -Werror -flto $(DEBUG_CFLAGS)
 AM_CFLAGS = -DDATADIR="$(datadir)"

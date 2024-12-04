@@ -28,11 +28,9 @@ typedef struct kft_context {
 
 static inline int kft_run(kft_input_t *pi, kft_output_t *po, int flags);
 
-static int kft_run_read_var_input(const char *const value,
-                                  const kft_ispec_t *const pis,
+static int kft_run_read_var_input(const char *const value, kft_ispec_t ispec,
                                   kft_output_t *const po, int flags) {
-  kft_itags_t tags = kft_itags_init();
-  kft_input_t *pi = kft_input_new(NULL, value, pis, &tags);
+  kft_input_t *pi = kft_input_new(NULL, value, ispec);
   const int ret = kft_run(pi, po, flags);
   kft_input_delete(pi);
   return ret;
@@ -46,15 +44,14 @@ static int kft_run_read_var_output(const char *const value,
   return ret;
 }
 
-static int kft_run_read_var(const char *const name, const char *const value,
-                            kft_input_t *const pi, kft_output_t *const po,
-                            int flags) {
+static int kft_run_read_var(const char *name, const char *value,
+                            kft_input_t *pi, kft_output_t *po, int flags) {
   // SPECIAL NAME
   if (strcmp(KFT_VARNAME_INPUT, name) == 0) {
-    const kft_ispec_t *pspec = kft_input_get_spec(pi);
-    const int ret = kft_run_read_var_input(value, pspec, po, flags);
+    kft_ispec_t ispec = kft_input_get_spec(pi);
+    int ret = kft_run_read_var_input(value, ispec, po, flags);
     if (ret == KFT_FAILURE) {
-      const char *const filename = kft_input_get_filename(pi);
+      const char *filename = kft_input_get_filename(pi);
       size_t row = kft_input_get_row(pi);
       size_t col = kft_input_get_col(pi);
       fprintf(stderr, "%s:%zu:%zu: $%s=%s: %m\n", filename, row + 1, col + 1,
@@ -65,7 +62,7 @@ static int kft_run_read_var(const char *const name, const char *const value,
   } else if (strcmp(KFT_VARNAME_OUTPUT, name) == 0) {
     const int ret = kft_run_read_var_output(value, pi, flags);
     if (ret == KFT_FAILURE) {
-      const char *const filename = kft_input_get_filename(pi);
+      const char *filename = kft_input_get_filename(pi);
       size_t row = kft_input_get_row(pi);
       size_t col = kft_input_get_col(pi);
       fprintf(stderr, "%s:%zu:%zu: $%s=%s: %m\n", filename, row + 1, col + 1,
@@ -174,11 +171,8 @@ static inline int ktf_run_read(kft_input_t *const pi, kft_output_t *const po,
   }
   kft_output_close(po_filename);
   const char *const filename = kft_output_get_data(po_filename);
-  kft_itags_t tags = kft_itags_init();
-  kft_input_t *pi_read =
-      kft_input_new(NULL, filename, kft_input_get_spec(pi), &tags);
+  kft_input_t *pi_read = kft_input_new(NULL, filename, kft_input_get_spec(pi));
   const int ret2 = kft_run(pi_read, po, flags);
-  kft_itags_destroy(&tags);
   kft_output_delete(po_filename);
   kft_input_delete(pi_read);
   return ret2;
@@ -353,18 +347,15 @@ static inline int kft_run_shell(kft_input_t *const pi, kft_output_t *const po,
   return kft_exec(pi, po, flags, shell, argv, 0);
 }
 
-static inline int kft_exec_inline(const kft_ispec_t *const pis,
-                                  kft_output_t *const po, int flags, char *file,
-                                  char *argv[]) {
+static inline int kft_exec_inline(kft_ispec_t ispec, kft_output_t *const po,
+                                  int flags, char *file, char *argv[]) {
   FILE *fp_in = stdin;
   char filename_in[PATH_MAX] = "/dev/fd/0";
   int fd_in = fileno(fp_in);
   kft_fd_to_path(fd_in, filename_in, sizeof(filename_in));
-  kft_itags_t tags = kft_itags_init();
-  kft_input_t *pi = kft_input_new(fp_in, filename_in, pis, &tags);
+  kft_input_t *pi = kft_input_new(fp_in, filename_in, ispec);
   const int ret = kft_exec(pi, po, flags, file, argv, 0);
   kft_input_delete(pi);
-  kft_itags_destroy(&tags);
   return ret;
 }
 
@@ -388,43 +379,40 @@ static inline int kft_run_hash(kft_input_t *const pi, kft_output_t *const po,
     return KFT_FAILURE;
   }
   if (ret != KFT_EOL) {
-    const kft_ispec_t *const pis = kft_input_get_spec(pi);
-    const int ret = kft_exec_inline(pis, po, flags, p.we_wordv[0], p.we_wordv);
+    kft_ispec_t ispec = kft_input_get_spec(pi);
+    int ret = kft_exec_inline(ispec, po, flags, p.we_wordv[0], p.we_wordv);
     wordfree(&p);
     return ret;
   }
-  const int ret3 =
-      kft_exec(pi, po, flags, p.we_wordv[0], p.we_wordv, like_shebang);
+  int ret3 = kft_exec(pi, po, flags, p.we_wordv[0], p.we_wordv, like_shebang);
   wordfree(&p);
   return ret3;
 }
 
 static int kft_run_tags_set(kft_input_t *const pi, int flags) {
-  kft_output_t *po_tags = kft_output_new(NULL, NULL);
-  int ret = kft_run(pi, po_tags, flags);
+  kft_output_t *po_tag = kft_output_new(NULL, NULL);
+  int ret = kft_run(pi, po_tag, flags);
   if (ret != KFT_SUCCESS) {
-    kft_output_delete(po_tags);
+    kft_output_delete(po_tag);
     return KFT_FAILURE;
   }
-  kft_output_close(po_tags);
-  const char *const tag = kft_output_get_data(po_tags);
-  size_t row_in = 0;
-  size_t col_in = 0;
-  long pos = kft_ftell(pi, &row_in, &col_in);
-  int ret2 = kft_itags_set(kft_input_get_tags(pi), tag, pos, row_in, col_in, 1);
-  kft_output_delete(po_tags);
+  kft_output_close(po_tag);
+  const char *const tag = kft_output_get_data(po_tag);
+  kft_itags_t *pitags = kft_input_get_tags(pi);
+  int ret2 = kft_itags_set(pitags, tag, pi, 1);
+  kft_output_delete(po_tag);
   return ret2 == 0 ? KFT_SUCCESS : KFT_FAILURE;
 }
 
 static int kft_run_tags_goto(kft_input_t *const pi, int flags) { // GOTO TAG
-  kft_output_t *po_tags = kft_output_new(NULL, NULL);
-  int ret = kft_run(pi, po_tags, flags);
+  kft_output_t *po_tag = kft_output_new(NULL, NULL);
+  int ret = kft_run(pi, po_tag, flags);
   if (ret != KFT_SUCCESS) {
-    kft_output_delete(po_tags);
+    kft_output_delete(po_tag);
     return KFT_FAILURE;
   }
-  kft_output_close(po_tags);
-  const char *const tag = kft_output_get_data(po_tags);
+  kft_output_close(po_tag);
+  const char *const tag = kft_output_get_data(po_tag);
   kft_input_tagent_t *ptagent = kft_itags_get(kft_input_get_tags(pi), tag);
   if (ptagent == NULL) {
     const char *const filename = kft_input_get_filename(pi);
@@ -432,21 +420,19 @@ static int kft_run_tags_goto(kft_input_t *const pi, int flags) { // GOTO TAG
     size_t col = kft_input_get_col(pi);
     fprintf(stderr, "%s:%zu:%zu: %s: tag not found\n", filename, row + 1,
             col + 1, tag);
-    kft_output_delete(po_tags);
+    kft_output_delete(po_tag);
     return KFT_FAILURE;
   }
   size_t count = kft_input_tagent_get_count(ptagent);
   size_t max_count = kft_input_tagent_get_max_count(ptagent);
   if (count >= max_count) {
-    kft_output_delete(po_tags);
+    kft_output_delete(po_tag);
     return KFT_SUCCESS;
   }
   kft_input_tagent_incr_count(ptagent);
-  long offset = kft_input_tagent_get_offset(ptagent);
-  size_t row = kft_input_tagent_get_row(ptagent);
-  size_t col = kft_input_tagent_get_col(ptagent);
+  kft_ioffset_t tioff = kft_input_tagent_get_ioffset(ptagent);
 
-  int ret2 = kft_fseek(pi, offset, row, col);
+  int ret2 = kft_fseek(pi, tioff);
   if (ret2 != KFT_SUCCESS) {
     const char *const filename = kft_input_get_filename(pi);
     size_t row = kft_input_get_row(pi);
@@ -454,7 +440,7 @@ static int kft_run_tags_goto(kft_input_t *const pi, int flags) { // GOTO TAG
     fprintf(stderr, "%s:%zu:%zu: %s: seek failed\n", filename, row + 1, col + 1,
             tag);
   }
-  kft_output_delete(po_tags);
+  kft_output_delete(po_tag);
   return ret2;
 }
 
@@ -626,15 +612,12 @@ int main(int argc, char *argv[]) {
 
     case 'h': {
       setenv("PROG", program_invocation_short_name, 1);
-      kft_ispec_t *pis =
-          kft_ispec_new(KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
-      kft_itags_t tags = kft_itags_init();
-      kft_input_t *pi =
-          kft_input_new(NULL, DATADIR "/kft_help.kft", pis, &tags);
+      kft_ispec_t is =
+          kft_ispec_init(KFT_OPTDEF_ESCAPE, KFT_OPTDEF_BEGIN, KFT_OPTDEF_END);
+      kft_input_t *pi = kft_input_new(NULL, DATADIR "/kft_help.kft", is);
       kft_output_t *po = kft_output_new(ofp, NULL);
       kft_run(pi, po, 0);
       kft_input_delete(pi);
-      kft_ispec_delete(pis);
       kft_output_delete(po);
       return EXIT_SUCCESS;
     }
@@ -709,7 +692,7 @@ int main(int argc, char *argv[]) {
     opt_end = KFT_OPTDEF_END;
   }
 
-  kft_ispec_t *pis = kft_ispec_new(opt_escape, opt_begin, opt_end);
+  kft_ispec_t is = kft_ispec_init(opt_escape, opt_begin, opt_end);
   kft_output_t *po = kft_output_new(ofp, NULL);
 
   for (size_t i = 0; i < nevals; i++) {
@@ -717,18 +700,15 @@ int main(int argc, char *argv[]) {
     if (fp_mem == NULL) {
       perror("fmemopen");
       kft_output_delete(po);
-      kft_ispec_delete(pis);
       return EXIT_FAILURE;
     }
     char filename_buf_in[PATH_MAX];
     snprintf(filename_buf_in, sizeof(filename_buf_in), "<eval:%zu>", i + 1);
-    kft_itags_t tags = kft_itags_init();
-    kft_input_t *pi = kft_input_new(fp_mem, filename_buf_in, pis, &tags);
+    kft_input_t *pi = kft_input_new(fp_mem, filename_buf_in, is);
     int ret2 = kft_run(pi, po, 0);
     kft_input_delete(pi);
     if (ret2 != KFT_SUCCESS) {
       kft_output_delete(po);
-      kft_ispec_delete(pis);
       return EXIT_FAILURE;
     }
   }
@@ -737,16 +717,12 @@ int main(int argc, char *argv[]) {
 
     if (nevals > 0 && isatty(fileno(stdin))) {
       kft_output_delete(po);
-      kft_ispec_delete(pis);
       return EXIT_SUCCESS;
     }
-    kft_itags_t tags = kft_itags_init();
-    kft_input_t *pi = kft_input_new(stdin, NULL, pis, &tags);
+    kft_input_t *pi = kft_input_new(stdin, NULL, is);
 
     const int ret = kft_run(pi, po, 0);
     kft_input_delete(pi);
-    kft_ispec_delete(pis);
-    kft_itags_destroy(&tags);
     kft_output_delete(po);
     return ret == KFT_SUCCESS ? EXIT_SUCCESS : EXIT_FAILURE;
   }
@@ -762,19 +738,15 @@ int main(int argc, char *argv[]) {
       fp = NULL;
       filename = file;
     }
-    kft_itags_t tags = kft_itags_init();
-    kft_input_t *pi = kft_input_new(fp, filename, pis, &tags);
+    kft_input_t *pi = kft_input_new(fp, filename, is);
 
     const int ret = kft_run(pi, po, 0);
     kft_input_delete(pi);
-    kft_itags_destroy(&tags);
     if (ret != KFT_SUCCESS) {
       kft_output_delete(po);
-      kft_ispec_delete(pis);
       return EXIT_FAILURE;
     }
   }
   kft_output_delete(po);
-  kft_ispec_delete(pis);
   return EXIT_SUCCESS;
 }

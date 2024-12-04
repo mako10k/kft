@@ -3,6 +3,11 @@
 #include <search.h>
 #include <string.h>
 
+struct kft_itags {
+  void *root;
+  FILE *fp;
+};
+
 /**
  * The tag information.
  */
@@ -10,20 +15,20 @@ struct kft_input_tagent {
   /** key */
   char *key;
   /** offset */
-  long offset;
-  /** row */
-  size_t row;
-  /** column */
-  size_t col;
+  kft_ioffset_t ioff;
   /** count */
   int count;
   /** max count */
   int max_count;
 };
 
-kft_itags_t *kft_itags_new(void) {
+static kft_itags_t kft_itags_init(FILE *fp) {
+  return (kft_itags_t){.root = NULL, .fp = fp};
+}
+
+kft_itags_t *kft_itags_new(FILE *fp) {
   kft_itags_t *ptags = (kft_itags_t *)kft_malloc(sizeof(kft_itags_t));
-  *ptags = kft_itags_init();
+  *ptags = kft_itags_init(fp);
   return ptags;
 }
 
@@ -37,39 +42,32 @@ static void kft_input_tagentfree(kft_input_tagent_t *const ptag) {
   kft_free((void *)ptag);
 }
 
-int kft_itags_set(kft_itags_t *ptags, const char *const key, const long offset,
-                  const size_t row, const size_t col, int max_count) {
-  kft_input_tagent_t keyent = {.key = (char *)key,
-                               .offset = 0,
-                               .row = 0,
-                               .col = 0,
-                               .count = 0,
-                               .max_count = 0};
+int kft_itags_set(kft_itags_t *ptags, const char *const key, kft_input_t *pi,
+                  int max_count) {
+  kft_ioffset_t ioff = kft_ftell(pi);
+  kft_input_tagent_t keyent = {
+      .key = (char *)key, .ioff = ioff, .count = 0, .max_count = 0};
   kft_input_tagent_t **pptagent = (kft_input_tagent_t **)tsearch(
-      (void *)&keyent, ptags,
+      (void *)&keyent, &ptags->root,
       (int (*)(const void *, const void *))kft_input_tagentcmp);
   if (*pptagent == &keyent) {
     *pptagent = (kft_input_tagent_t *)kft_malloc(sizeof(kft_input_tagent_t));
     (*pptagent)->key = kft_strdup(key);
   }
-  (*pptagent)->offset = offset;
-  (*pptagent)->row = row;
-  (*pptagent)->col = col;
+  (*pptagent)->ioff = ioff;
   (*pptagent)->count = 0;
   (*pptagent)->max_count = max_count;
   return KFT_SUCCESS;
 }
 
-kft_input_tagent_t *kft_itags_get(kft_itags_t *const ptags,
-                                  const char *const key) {
-  kft_input_tagent_t keyent = {.key = (char *)key,
-                               .offset = 0,
-                               .row = 0,
-                               .col = 0,
-                               .count = 0,
-                               .max_count = 0};
+kft_input_tagent_t *kft_itags_get(const kft_itags_t *ptags, const char *key) {
+  kft_input_tagent_t keyent = {
+      .key = (char *)key,
+      .ioff = (kft_ioffset_t){.ipos = {NULL, 0, 0}, .offset = 0},
+      .count = 0,
+      .max_count = 0};
   kft_input_tagent_t **pptagent = (kft_input_tagent_t **)tfind(
-      (void *)&keyent, ptags,
+      (void *)&keyent, &ptags->root,
       (int (*)(const void *, const void *))kft_input_tagentcmp);
   if (pptagent == NULL) {
     return NULL;
@@ -77,12 +75,12 @@ kft_input_tagent_t *kft_itags_get(kft_itags_t *const ptags,
   return *pptagent;
 }
 
-void kft_itags_destroy(kft_itags_t *ptags) {
-  tdestroy(ptags, (void (*)(void *))kft_input_tagentfree);
+static void kft_itags_destroy(kft_itags_t tags) {
+  tdestroy(&tags.root, (void (*)(void *))kft_input_tagentfree);
 }
 
 void kft_itags_delete(kft_itags_t *ptags) {
-  kft_itags_destroy(ptags);
+  kft_itags_destroy(*ptags);
   kft_free(ptags);
 }
 
@@ -94,16 +92,16 @@ size_t kft_input_tagent_get_max_count(const kft_input_tagent_t *const ptag) {
   return ptag->max_count;
 }
 
-long kft_input_tagent_get_offset(const kft_input_tagent_t *const ptag) {
-  return ptag->offset;
+kft_ioffset_t kft_input_tagent_get_ioffset(const kft_input_tagent_t *ptagent) {
+  return ptagent->ioff;
 }
 
 size_t kft_input_tagent_get_row(const kft_input_tagent_t *const ptag) {
-  return ptag->row;
+  return ptag->ioff.ipos.row;
 }
 
 size_t kft_input_tagent_get_col(const kft_input_tagent_t *const ptag) {
-  return ptag->col;
+  return ptag->ioff.ipos.col;
 }
 
 size_t kft_input_tagent_incr_count(kft_input_tagent_t *const ptag) {

@@ -26,3 +26,6 @@ conftest
 conftset.*
 confdefs.h
 core
+config.guess
+config.sub
+configure.scan
