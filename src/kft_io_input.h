@@ -91,5 +91,5 @@ kft_ioffset_t kft_ftell(kft_input_t *pi)
 int kft_fseek(kft_input_t *pi, kft_ioffset_t offset)
     __attribute__((nonnull(1), warn_unused_result));
 
-int kft_fetch_raw(kft_input_t *const pi)
+int kft_fetch_raw(kft_input_t *pi)
     __attribute__((nonnull(1), warn_unused_result));

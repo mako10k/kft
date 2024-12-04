@@ -8,6 +8,9 @@
 #include <limits.h>
 #include <string.h>
 
+#define KFT_INPUT_MODE_STREAM_OPENED 1
+#define KFT_INPUT_MODE_MALLOC_FILENAME 2
+
 /**
  * The input information.
  */
@@ -44,7 +47,7 @@ kft_input_t *kft_input_new_mem(const char *buf, size_t bufsize,
   if (fp == NULL) {
     kft_error("%s: %m\n", "fmemopen");
   }
-  kft_input_t *const pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
+  kft_input_t *pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
   pi->mode = KFT_INPUT_MODE_STREAM_OPENED;
   pi->fp = fp;
   pi->filename = "<inline>";
@@ -65,7 +68,7 @@ kft_input_t *kft_input_new_open(const char *filename, kft_ispec_t ispec) {
   if (fp == NULL) {
     kft_error("%s: %m\n", filename);
   }
-  kft_input_t *const pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
+  kft_input_t *pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
   pi->mode = KFT_INPUT_MODE_STREAM_OPENED;
   pi->fp = fp;
   pi->filename = filename;
@@ -81,8 +84,7 @@ kft_input_t *kft_input_new_open(const char *filename, kft_ispec_t ispec) {
   return pi;
 }
 
-kft_input_t *kft_input_new(FILE *fp, const char *filename,
-                           const kft_ispec_t ispec) {
+kft_input_t *kft_input_new(FILE *fp, const char *filename, kft_ispec_t ispec) {
   int mode = 0;
   // STREAM POINTER IS SUPPLIED
 
@@ -96,7 +98,7 @@ kft_input_t *kft_input_new(FILE *fp, const char *filename,
     mode |= KFT_INPUT_MODE_MALLOC_FILENAME;
   }
 
-  kft_input_t *const pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
+  kft_input_t *pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
   pi->mode = mode;
   pi->fp = fp;
   pi->filename = filename;
@@ -123,20 +125,20 @@ void kft_input_delete(kft_input_t *pi) {
   kft_free(pi);
 }
 
-int kft_fetch_raw(kft_input_t *const pi) {
+int kft_fetch_raw(kft_input_t *pi) {
   if (pi->bufpos_fetched < pi->bufpos_prefetched) {
     // FETCH FROM PREFETCH DATA
     return pi->buf[pi->bufpos_fetched++];
   }
 
   // FETCH FROM STREAM
-  const int ch = fgetc(pi->fp);
+  int ch = fgetc(pi->fp);
   if (ch == EOF) {
     return ch;
   }
 
-  const size_t committed_size = pi->bufpos_committed;
-  const size_t prefetched_size = pi->bufpos_prefetched - pi->bufpos_committed;
+  size_t committed_size = pi->bufpos_committed;
+  size_t prefetched_size = pi->bufpos_prefetched - pi->bufpos_committed;
 
   // WHEN PREFETCH DATA IS EMPTY
   if (committed_size > 0 && prefetched_size == 0) {
@@ -171,7 +173,7 @@ int kft_fetch_raw(kft_input_t *const pi) {
     } else {
       bufsize = bufsize * 3 / 2;
     }
-    char *const buf = (char *)kft_realloc(pi->buf, bufsize);
+    char *buf = (char *)kft_realloc(pi->buf, bufsize);
     pi->buf = buf;
     pi->bufsize = bufsize;
   }
@@ -182,10 +184,10 @@ int kft_fetch_raw(kft_input_t *const pi) {
   return ch;
 }
 
-static void kft_update_pos(const int ch, kft_ipos_t *pipos)
+static void kft_update_pos(int ch, kft_ipos_t *pipos)
     __attribute__((nonnull(2)));
 
-static void kft_update_pos(const int ch, kft_ipos_t *pipos) {
+static void kft_update_pos(int ch, kft_ipos_t *pipos) {
   switch (ch) {
   case EOF:
     break;
@@ -198,12 +200,12 @@ static void kft_update_pos(const int ch, kft_ipos_t *pipos) {
   }
 }
 
-void kft_input_rollback(kft_input_t *const pi, size_t count) {
+void kft_input_rollback(kft_input_t *pi, size_t count) {
   assert(count <= pi->bufpos_fetched - pi->bufpos_committed);
   pi->bufpos_fetched -= count;
 }
 
-void kft_input_commit(kft_input_t *const pi, size_t count) {
+void kft_input_commit(kft_input_t *pi, size_t count) {
   assert(count <= pi->bufpos_fetched - pi->bufpos_committed);
   for (size_t i = 0; i < count; i++) {
     kft_update_pos(pi->buf[pi->bufpos_committed + i], &pi->ipos);
@@ -233,7 +235,7 @@ int kft_fgetc(kft_input_t *pi) {
     // --------------------------
     if (ch == ch_esc) {
 
-      const int ch_esc_next = kft_fetch_raw(pi);
+      int ch_esc_next = kft_fetch_raw(pi);
       if (ch_esc_next == EOF) {
         // ACCEPT ESCAPE
         kft_input_commit(pi, 1);

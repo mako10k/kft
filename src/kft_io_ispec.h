@@ -31,11 +31,11 @@ kft_ispec_t kft_ispec_init(int ch_esc, const char *delim_st,
  * Accessors                                     *
  * --------------------------------------------- */
 
-int kft_ispec_get_ch_esc(const kft_ispec_t ispec)
+int kft_ispec_get_ch_esc(kft_ispec_t ispec)
     __attribute__((warn_unused_result, const));
 
-const char *kft_ispec_get_delim_st(const kft_ispec_t ispec)
+const char *kft_ispec_get_delim_st(kft_ispec_t ispec)
     __attribute__((warn_unused_result, const));
 
-const char *kft_ispec_get_delim_en(const kft_ispec_t ispec)
+const char *kft_ispec_get_delim_en(kft_ispec_t ispec)
     __attribute__((warn_unused_result, const));

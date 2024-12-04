@@ -71,18 +71,18 @@ kft_output_t *kft_output_new(FILE *fp, const char *filename) {
   return po;
 }
 
-void kft_output_flush(kft_output_t *const po) { fflush(po->fp); }
+void kft_output_flush(kft_output_t *po) { fflush(po->fp); }
 
-void kft_output_rewind(kft_output_t *const po) { rewind(po->fp); }
+void kft_output_rewind(kft_output_t *po) { rewind(po->fp); }
 
-void kft_output_close(kft_output_t *const po) {
+void kft_output_close(kft_output_t *po) {
   if (po->mode & KFT_OUTPUT_MODE_STREAM_OPENED) {
     fclose(po->fp);
   }
   po->mode &= ~KFT_OUTPUT_MODE_STREAM_OPENED;
 }
 
-void kft_output_delete(kft_output_t *const po) {
+void kft_output_delete(kft_output_t *po) {
   if (po->mode & KFT_OUTPUT_MODE_STREAM_OPENED) {
     fclose(po->fp);
   }
@@ -95,8 +95,8 @@ void kft_output_delete(kft_output_t *const po) {
   }
 }
 
-int kft_fputc(const int ch, kft_output_t *const po) {
-  const int ret = fputc(ch, po->fp);
+int kft_fputc(int ch, kft_output_t *po) {
+  int ret = fputc(ch, po->fp);
   return ret;
 }
 

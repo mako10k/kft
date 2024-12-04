@@ -32,17 +32,17 @@ kft_itags_t *kft_itags_new(FILE *fp) {
   return ptags;
 }
 
-static int kft_input_tagentcmp(const kft_input_tagent_t *const ptag1,
-                               const kft_input_tagent_t *const ptag2) {
+static int kft_input_tagentcmp(const kft_input_tagent_t *ptag1,
+                               const kft_input_tagent_t *ptag2) {
   return strcmp(ptag1->key, ptag2->key);
 }
 
-static void kft_input_tagentfree(kft_input_tagent_t *const ptag) {
+static void kft_input_tagentfree(kft_input_tagent_t *ptag) {
   kft_free(ptag->key);
   kft_free((void *)ptag);
 }
 
-int kft_itags_set(kft_itags_t *ptags, const char *const key, kft_input_t *pi,
+int kft_itags_set(kft_itags_t *ptags, const char *key, kft_input_t *pi,
                   int max_count) {
   kft_ioffset_t ioff = kft_ftell(pi);
   kft_input_tagent_t keyent = {
@@ -84,11 +84,11 @@ void kft_itags_delete(kft_itags_t *ptags) {
   kft_free(ptags);
 }
 
-size_t kft_input_tagent_get_count(const kft_input_tagent_t *const ptag) {
+size_t kft_input_tagent_get_count(const kft_input_tagent_t *ptag) {
   return ptag->count;
 }
 
-size_t kft_input_tagent_get_max_count(const kft_input_tagent_t *const ptag) {
+size_t kft_input_tagent_get_max_count(const kft_input_tagent_t *ptag) {
   return ptag->max_count;
 }
 
@@ -96,14 +96,14 @@ kft_ioffset_t kft_input_tagent_get_ioffset(const kft_input_tagent_t *ptagent) {
   return ptagent->ioff;
 }
 
-size_t kft_input_tagent_get_row(const kft_input_tagent_t *const ptag) {
+size_t kft_input_tagent_get_row(const kft_input_tagent_t *ptag) {
   return ptag->ioff.ipos.row;
 }
 
-size_t kft_input_tagent_get_col(const kft_input_tagent_t *const ptag) {
+size_t kft_input_tagent_get_col(const kft_input_tagent_t *ptag) {
   return ptag->ioff.ipos.col;
 }
 
-size_t kft_input_tagent_incr_count(kft_input_tagent_t *const ptag) {
+size_t kft_input_tagent_incr_count(kft_input_tagent_t *ptag) {
   return ++ptag->count;
 }
