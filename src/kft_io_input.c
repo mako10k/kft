@@ -15,7 +15,7 @@ struct kft_input {
   /** mode */
   int mode;
   /** input stream */
-  FILE *fp_in;
+  FILE *fp;
   /** filename */
   const char *filename;
   /** position */
@@ -38,41 +38,17 @@ struct kft_input {
   kft_itags_t *ptags;
 };
 
-kft_input_t *kft_input_new(FILE *fp_in, const char *filename_in,
-                           const kft_ispec_t ispec) {
-  int mode = 0;
-  FILE *fp_in_new = fp_in;
-  char *filename_in_new = (char *)filename_in;
-  if (fp_in_new != NULL) {
-    // STREAM POINTER IS SUPPLIED
-
-    if (filename_in_new == NULL) {
-      // AUTO DETECT FILENAME
-      int fd_in_new = fileno(fp_in_new);
-      assert(fd_in_new >= 0);
-      filename_in_new = (char *)kft_malloc_atomic(PATH_MAX);
-      kft_fd_to_path(fd_in_new, filename_in_new, PATH_MAX);
-      filename_in_new =
-          (char *)kft_realloc(filename_in_new, strlen(filename_in_new) + 1);
-      mode |= KFT_INPUT_MODE_MALLOC_FILENAME;
-    }
-  } else if (filename_in_new != NULL) {
-    // OPEN FILE
-    fp_in_new = fopen(filename_in_new, "r");
-    if (fp_in_new == NULL) {
-      kft_error("%s: %m\n", filename_in_new);
-    }
-    mode |= KFT_INPUT_MODE_STREAM_OPENED;
-  } else {
-    // OPEN MEMORY STREAM
-    assert(0);
+kft_input_t *kft_input_new_mem(const char *buf, size_t bufsize,
+                               kft_ispec_t ispec) {
+  FILE *fp = fmemopen((void *)buf, bufsize, "r");
+  if (fp == NULL) {
+    kft_error("%s: %m\n", "fmemopen");
   }
-
   kft_input_t *const pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
-  pi->mode = mode;
-  pi->fp_in = fp_in_new;
-  pi->filename = filename_in_new;
-  pi->ipos = kft_ipos_init(fp_in_new, 0, 0);
+  pi->mode = KFT_INPUT_MODE_STREAM_OPENED;
+  pi->fp = fp;
+  pi->filename = "<inline>";
+  pi->ipos = kft_ipos_init(fp, 0, 0);
   pi->buf = NULL;
   pi->bufsize = 0;
   pi->bufpos_committed = 0;
@@ -80,13 +56,65 @@ kft_input_t *kft_input_new(FILE *fp_in, const char *filename_in,
   pi->bufpos_prefetched = 0;
   pi->esclen = 0;
   pi->ispec = ispec;
-  pi->ptags = kft_itags_new(fp_in_new);
+  pi->ptags = kft_itags_new(fp);
+  return pi;
+}
+
+kft_input_t *kft_input_new_open(const char *filename, kft_ispec_t ispec) {
+  FILE *fp = fopen(filename, "r");
+  if (fp == NULL) {
+    kft_error("%s: %m\n", filename);
+  }
+  kft_input_t *const pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
+  pi->mode = KFT_INPUT_MODE_STREAM_OPENED;
+  pi->fp = fp;
+  pi->filename = filename;
+  pi->ipos = kft_ipos_init(fp, 0, 0);
+  pi->buf = NULL;
+  pi->bufsize = 0;
+  pi->bufpos_committed = 0;
+  pi->bufpos_fetched = 0;
+  pi->bufpos_prefetched = 0;
+  pi->esclen = 0;
+  pi->ispec = ispec;
+  pi->ptags = kft_itags_new(fp);
+  return pi;
+}
+
+kft_input_t *kft_input_new(FILE *fp, const char *filename,
+                           const kft_ispec_t ispec) {
+  int mode = 0;
+  // STREAM POINTER IS SUPPLIED
+
+  if (filename == NULL) {
+    // AUTO DETECT FILENAME
+    int fd = fileno(fp);
+    assert(fd >= 0);
+    char *filename_new = (char *)kft_malloc_atomic(PATH_MAX);
+    kft_fd_to_path(fd, filename_new, PATH_MAX);
+    filename = (char *)kft_realloc(filename_new, strlen(filename) + 1);
+    mode |= KFT_INPUT_MODE_MALLOC_FILENAME;
+  }
+
+  kft_input_t *const pi = (kft_input_t *)kft_malloc(sizeof(kft_input_t));
+  pi->mode = mode;
+  pi->fp = fp;
+  pi->filename = filename;
+  pi->ipos = kft_ipos_init(fp, 0, 0);
+  pi->buf = NULL;
+  pi->bufsize = 0;
+  pi->bufpos_committed = 0;
+  pi->bufpos_fetched = 0;
+  pi->bufpos_prefetched = 0;
+  pi->esclen = 0;
+  pi->ispec = ispec;
+  pi->ptags = kft_itags_new(fp);
   return pi;
 }
 
 void kft_input_delete(kft_input_t *pi) {
   if (pi->mode & KFT_INPUT_MODE_STREAM_OPENED) {
-    fclose(pi->fp_in);
+    fclose(pi->fp);
   }
   if (pi->mode & KFT_INPUT_MODE_MALLOC_FILENAME) {
     kft_free((char *)pi->filename);
@@ -102,7 +130,7 @@ int kft_fetch_raw(kft_input_t *const pi) {
   }
 
   // FETCH FROM STREAM
-  const int ch = fgetc(pi->fp_in);
+  const int ch = fgetc(pi->fp);
   if (ch == EOF) {
     return ch;
   }
@@ -385,7 +413,7 @@ int kft_fgetc(kft_input_t *pi) {
 }
 
 kft_ioffset_t kft_ftell(kft_input_t *pi) {
-  long offset = ftell(pi->fp_in);
+  long offset = ftell(pi->fp);
   if (offset == -1) {
     return (kft_ioffset_t){.ipos = pi->ipos, .offset = -1};
   }
@@ -396,8 +424,8 @@ kft_ioffset_t kft_ftell(kft_input_t *pi) {
 }
 
 int kft_fseek(kft_input_t *pi, kft_ioffset_t ioff) {
-  assert(pi->fp_in == ioff.ipos.fp);
-  int ret = fseek(pi->fp_in, ioff.offset, SEEK_SET);
+  assert(pi->fp == ioff.ipos.fp);
+  int ret = fseek(pi->fp, ioff.offset, SEEK_SET);
   if (ret != 0) {
     return KFT_FAILURE;
   }

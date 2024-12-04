@@ -6,81 +6,88 @@
 #include <limits.h>
 #include <string.h>
 
-struct kft_output {
-  int mode;
 #define KFT_OUTPUT_MODE_STREAM_OPENED 1
 #define KFT_OUTPUT_MODE_MALLOC_FILENAME 2
 #define KFT_OUTPUT_MODE_MALLOC_MEMBUF 4
 
-  FILE *fp_out;
+struct kft_output {
+  int mode;
+  FILE *fp;
+  // TODO: use kft_memstream?
   kft_output_mem_t *pmembuf;
-  const char *filename_out;
+  const char *filename;
 };
 
-kft_output_t *kft_output_new(FILE *fp_out, const char *filename_out) {
-  int mode_new = 0;
-  FILE *fp_out_new = fp_out;
-  kft_output_mem_t *pmembuf_new = NULL;
-  char *filename_out_new = (char *)filename_out;
-  if (fp_out_new != NULL) {
-    // STREAM POINTER IS SUPPLIED
-
-    if (filename_out_new == NULL) {
-      // AUTO DETECT FILENAME
-      int fd_out_new = fileno(fp_out_new);
-      assert(fd_out_new >= 0);
-      filename_out_new = (char *)kft_malloc_atomic(PATH_MAX);
-      kft_fd_to_path(fd_out_new, filename_out_new, PATH_MAX);
-      filename_out_new =
-          (char *)kft_realloc(filename_out_new, strlen(filename_out_new) + 1);
-      mode_new |= KFT_OUTPUT_MODE_MALLOC_FILENAME;
-    }
-  } else if (filename_out_new != NULL) {
-    // OPEN FILE
-    fp_out_new = fopen(filename_out_new, "w");
-    if (fp_out_new == NULL) {
-      kft_error("%s: %m\n", filename_out_new);
-    }
-    mode_new |= KFT_OUTPUT_MODE_STREAM_OPENED;
-  } else {
-    // OPEN MEMORY STREAM
-    pmembuf_new = (kft_output_mem_t *)kft_malloc(sizeof(kft_output_mem_t));
-    fp_out_new = open_memstream(&pmembuf_new->membuf, &pmembuf_new->membufsize);
-    if (fp_out_new == NULL) {
-      kft_error("%s: %m\n", "open_memstream");
-    }
-    filename_out_new = (char *)"<inline>";
-    mode_new |= KFT_OUTPUT_MODE_MALLOC_MEMBUF;
-    mode_new |= KFT_OUTPUT_MODE_STREAM_OPENED;
+kft_output_t *kft_output_new_mem(void) {
+  // OPEN MEMORY STREAM
+  kft_output_mem_t *pmembuf =
+      (kft_output_mem_t *)kft_malloc(sizeof(kft_output_mem_t));
+  pmembuf->membuf = NULL;
+  pmembuf->membufsize = 0;
+  FILE *fp = open_memstream(&pmembuf->membuf, &pmembuf->membufsize);
+  if (fp == NULL) {
+    kft_error("%s: %m\n", "open_memstream");
   }
+  int mode = KFT_OUTPUT_MODE_MALLOC_MEMBUF | KFT_OUTPUT_MODE_STREAM_OPENED;
+  kft_output_t *po = (kft_output_t *)kft_malloc(sizeof(kft_output_t));
+  po->mode = mode;
+  po->fp = fp;
+  po->pmembuf = pmembuf;
+  po->filename = "<inline>";
+  return po;
+}
 
+kft_output_t *kft_output_new_open(const char *filename) {
+  FILE *fp = fopen(filename, "w");
+  if (fp == NULL) {
+    kft_error("%s: %m\n", filename);
+  }
+  kft_output_t *po = (kft_output_t *)kft_malloc(sizeof(kft_output_t));
+  po->mode = KFT_OUTPUT_MODE_STREAM_OPENED;
+  po->fp = fp;
+  po->pmembuf = NULL;
+  po->filename = filename;
+  return po;
+}
+
+kft_output_t *kft_output_new(FILE *fp, const char *filename) {
+  int mode = 0;
+  if (filename == NULL) {
+    // AUTO DETECT FILENAME
+    int fd = fileno(fp);
+    assert(fd >= 0);
+    char *filename_new = (char *)kft_malloc_atomic(PATH_MAX);
+    kft_fd_to_path(fd, filename_new, PATH_MAX);
+    filename = (char *)kft_realloc(filename_new, strlen(filename) + 1);
+    mode |= KFT_OUTPUT_MODE_MALLOC_FILENAME;
+  }
   kft_output_t *po = (kft_output_t *)kft_malloc(sizeof(kft_output_t));
   *po = (kft_output_t){
-      .mode = mode_new,
-      .fp_out = fp_out_new,
-      .pmembuf = pmembuf_new,
-      .filename_out = filename_out_new,
+      .mode = mode,
+      .fp = fp,
+      .pmembuf = NULL,
+      .filename = filename,
   };
   return po;
 }
 
-void kft_output_flush(kft_output_t *const po) { fflush(po->fp_out); }
+void kft_output_flush(kft_output_t *const po) { fflush(po->fp); }
 
-void kft_output_rewind(kft_output_t *const po) { rewind(po->fp_out); }
+void kft_output_rewind(kft_output_t *const po) { rewind(po->fp); }
 
 void kft_output_close(kft_output_t *const po) {
   if (po->mode & KFT_OUTPUT_MODE_STREAM_OPENED) {
-    fclose(po->fp_out);
+    fclose(po->fp);
   }
   po->mode &= ~KFT_OUTPUT_MODE_STREAM_OPENED;
 }
 
 void kft_output_delete(kft_output_t *const po) {
   if (po->mode & KFT_OUTPUT_MODE_STREAM_OPENED) {
-    fclose(po->fp_out);
+    fclose(po->fp);
   }
   if (po->mode & KFT_OUTPUT_MODE_MALLOC_FILENAME) {
-    kft_free((char *)po->filename_out);
+    kft_free((char *)po->filename);
   }
   if (po->mode & KFT_OUTPUT_MODE_MALLOC_MEMBUF) {
     free(po->pmembuf->membuf); // allocate by memstream
@@ -89,7 +96,7 @@ void kft_output_delete(kft_output_t *const po) {
 }
 
 int kft_fputc(const int ch, kft_output_t *const po) {
-  const int ret = fputc(ch, po->fp_out);
+  const int ret = fputc(ch, po->fp);
   return ret;
 }
 
@@ -99,9 +106,9 @@ void *kft_output_get_data(kft_output_t *po) {
 }
 
 size_t kft_write(const void *ptr, size_t size, size_t nmemb, kft_output_t *po) {
-  return fwrite(ptr, size, nmemb, po->fp_out);
+  return fwrite(ptr, size, nmemb, po->fp);
 }
 
 const char *kft_output_get_filename(const kft_output_t *po) {
-  return po->filename_out;
+  return po->filename;
 }

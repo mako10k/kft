@@ -37,7 +37,14 @@ struct kft_ioffset {
  * @param ispec The input specification
  */
 kft_input_t *kft_input_new(FILE *fp, const char *filename, kft_ispec_t ispec)
+    __attribute__((warn_unused_result, malloc, returns_nonnull, nonnull(1)));
+
+kft_input_t *kft_input_new_mem(const char *buf, size_t bufsize,
+                               kft_ispec_t ispec)
     __attribute__((warn_unused_result, malloc, returns_nonnull));
+
+kft_input_t *kft_input_new_open(const char *filename, kft_ispec_t ispec)
+    __attribute__((warn_unused_result, malloc, returns_nonnull, nonnull(1)));
 
 void kft_input_delete(kft_input_t *pi) __attribute__((nonnull(1)));
 

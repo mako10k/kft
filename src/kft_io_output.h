@@ -10,7 +10,14 @@ typedef struct kft_output_mem {
 
 typedef struct kft_output kft_output_t;
 
-kft_output_t *kft_output_new(FILE *fp_out, const char *filename_out);
+kft_output_t *kft_output_new(FILE *fp, const char *filename)
+    __attribute__((warn_unused_result, malloc, returns_nonnull, nonnull(1)));
+
+kft_output_t *kft_output_new_mem(void)
+    __attribute__((warn_unused_result, malloc, returns_nonnull));
+
+kft_output_t *kft_output_new_open(const char *filename)
+    __attribute__((warn_unused_result, malloc, returns_nonnull, nonnull(1)));
 
 void kft_output_flush(kft_output_t *po);
 
