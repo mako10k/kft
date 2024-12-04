@@ -1,4 +1,4 @@
-#include "kft_io_input_tags.h"
+#include "kft_io_itags.h"
 #include "kft_malloc.h"
 #include <search.h>
 #include <string.h>
@@ -21,10 +21,9 @@ struct kft_input_tagent {
   int max_count;
 };
 
-kft_input_tags_t *kft_input_tags_new(void) {
-  kft_input_tags_t *ptags =
-      (kft_input_tags_t *)kft_malloc(sizeof(kft_input_tags_t));
-  *ptags = kft_input_tags_init();
+kft_itags_t *kft_itags_new(void) {
+  kft_itags_t *ptags = (kft_itags_t *)kft_malloc(sizeof(kft_itags_t));
+  *ptags = kft_itags_init();
   return ptags;
 }
 
@@ -38,9 +37,8 @@ static void kft_input_tagentfree(kft_input_tagent_t *const ptag) {
   kft_free((void *)ptag);
 }
 
-int kft_input_tags_set(kft_input_tags_t *ptags, const char *const key,
-                       const long offset, const size_t row, const size_t col,
-                       int max_count) {
+int kft_itags_set(kft_itags_t *ptags, const char *const key, const long offset,
+                  const size_t row, const size_t col, int max_count) {
   kft_input_tagent_t keyent = {.key = (char *)key,
                                .offset = 0,
                                .row = 0,
@@ -62,8 +60,8 @@ int kft_input_tags_set(kft_input_tags_t *ptags, const char *const key,
   return KFT_SUCCESS;
 }
 
-kft_input_tagent_t *kft_input_tags_get(kft_input_tags_t *const ptags,
-                                       const char *const key) {
+kft_input_tagent_t *kft_itags_get(kft_itags_t *const ptags,
+                                  const char *const key) {
   kft_input_tagent_t keyent = {.key = (char *)key,
                                .offset = 0,
                                .row = 0,
@@ -79,12 +77,12 @@ kft_input_tagent_t *kft_input_tags_get(kft_input_tags_t *const ptags,
   return *pptagent;
 }
 
-void kft_input_tags_destroy(kft_input_tags_t *ptags) {
+void kft_itags_destroy(kft_itags_t *ptags) {
   tdestroy(ptags, (void (*)(void *))kft_input_tagentfree);
 }
 
-void kft_input_tags_delete(kft_input_tags_t *ptags) {
-  kft_input_tags_destroy(ptags);
+void kft_itags_delete(kft_itags_t *ptags) {
+  kft_itags_destroy(ptags);
   kft_free(ptags);
 }
 

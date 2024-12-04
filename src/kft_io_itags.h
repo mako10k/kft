@@ -3,24 +3,23 @@
 #include "kft.h"
 
 typedef struct kft_input_tagent kft_input_tagent_t;
-typedef void *kft_input_tags_t;
+typedef void *kft_itags_t;
 
 #include "kft_io.h"
 #include "kft_io_input.h"
 
-#define kft_input_tags_init() NULL
+#define kft_itags_init() NULL
 
-kft_input_tags_t *kft_input_tags_new(void);
+kft_itags_t *kft_itags_new(void);
 
-void kft_input_tags_delete(kft_input_tags_t *ptags);
+void kft_itags_delete(kft_itags_t *ptags);
 
-void kft_input_tags_destroy(kft_input_tags_t *ptags);
+void kft_itags_destroy(kft_itags_t *ptags);
 
-int kft_input_tags_set(kft_input_tags_t *ptags, const char *key, long offset,
-                       size_t row, size_t col, int max_count);
+int kft_itags_set(kft_itags_t *ptags, const char *key, long offset, size_t row,
+                  size_t col, int max_count);
 
-kft_input_tagent_t *kft_input_tags_get(kft_input_tags_t *ptags,
-                                       const char *key);
+kft_input_tagent_t *kft_itags_get(kft_itags_t *ptags, const char *key);
 
 size_t kft_input_tagent_get_count(const kft_input_tagent_t *ptagent);
 

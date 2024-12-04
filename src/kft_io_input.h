@@ -7,13 +7,12 @@
  */
 typedef struct kft_input kft_input_t;
 
-#include "kft_io_input_spec.h"
-#include "kft_io_input_tags.h"
+#include "kft_io_ispec.h"
+#include "kft_io_itags.h"
 #include <stdio.h>
 
 kft_input_t *kft_input_new(FILE *fp_in, const char *filename_in,
-                           const kft_input_spec_t *pspec,
-                           kft_input_tags_t *ptags);
+                           const kft_ispec_t *pspec, kft_itags_t *ptags);
 
 void kft_input_delete(kft_input_t *pi);
 
@@ -31,9 +30,9 @@ long kft_ftell(kft_input_t *const pi, size_t *prow_in, size_t *pcol_in);
 
 int kft_fseek(kft_input_t *const pi, long offset, size_t row_in, size_t col_in);
 
-const kft_input_spec_t *kft_input_get_spec(kft_input_t *pi);
+const kft_ispec_t *kft_input_get_spec(kft_input_t *pi);
 
-kft_input_tags_t *kft_input_get_tags(kft_input_t *pi);
+kft_itags_t *kft_input_get_tags(kft_input_t *pi);
 
 const char *kft_input_get_filename(const kft_input_t *pi);
 

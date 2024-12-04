@@ -7,8 +7,8 @@ kft_SOURCES = \
   kft_error.c \
   kft_io.c \
   kft_io_input.c \
-  kft_io_input_spec.c \
-  kft_io_input_tags.c \
+  kft_io_ispec.c \
+  kft_io_itags.c \
   kft_io_output.c \
   kft_malloc.c \
   kft_misc.c \

@@ -1,8 +1,8 @@
 #include "kft_io_input.h"
 #include "kft_error.h"
 #include "kft_io.h"
-#include "kft_io_input_spec.h"
-#include "kft_io_input_tags.h"
+#include "kft_io_ispec.h"
+#include "kft_io_itags.h"
 #include "kft_malloc.h"
 #include <assert.h>
 #include <limits.h>
@@ -35,14 +35,13 @@ struct kft_input {
   /** chars count for extra escape */
   int esclen;
   /** input specification */
-  const kft_input_spec_t *pspec;
+  const kft_ispec_t *pspec;
   /** tags */
-  kft_input_tags_t *ptags;
+  kft_itags_t *ptags;
 };
 
 kft_input_t *kft_input_new(FILE *fp_in, const char *filename_in,
-                           const kft_input_spec_t *pspec,
-                           kft_input_tags_t *ptags) {
+                           const kft_ispec_t *pspec, kft_itags_t *ptags) {
   int mode = 0;
   FILE *fp_in_new = fp_in;
   char *filename_in_new = (char *)filename_in;
@@ -185,9 +184,9 @@ void kft_input_commit(kft_input_t *const pi, size_t count) {
 }
 
 int kft_fgetc(kft_input_t *const pi) {
-  const int ch_esc = kft_input_spec_get_ch_esc(pi->pspec);
-  const char *const delim_st = kft_input_spec_get_delim_st(pi->pspec);
-  const char *const delim_en = kft_input_spec_get_delim_en(pi->pspec);
+  const int ch_esc = kft_ispec_get_ch_esc(pi->pspec);
+  const char *const delim_st = kft_ispec_get_delim_st(pi->pspec);
+  const char *const delim_en = kft_ispec_get_delim_en(pi->pspec);
   while (1) {
     // FETCH NEXT CHARACTER
     const int ch = kft_fetch_raw(pi);
@@ -406,11 +405,9 @@ int kft_fseek(kft_input_t *const pi, long offset, size_t row_in,
   return KFT_SUCCESS;
 }
 
-const kft_input_spec_t *kft_input_get_spec(kft_input_t *pi) {
-  return pi->pspec;
-}
+const kft_ispec_t *kft_input_get_spec(kft_input_t *pi) { return pi->pspec; }
 
-kft_input_tags_t *kft_input_get_tags(kft_input_t *pi) { return pi->ptags; }
+kft_itags_t *kft_input_get_tags(kft_input_t *pi) { return pi->ptags; }
 
 const char *kft_input_get_filename(const kft_input_t *pi) {
   return pi->filename_in;
