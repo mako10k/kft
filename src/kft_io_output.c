@@ -58,7 +58,7 @@ kft_output_t *kft_output_new(FILE *fp, const char *filename) {
     assert(fd >= 0);
     char *filename_new = (char *)kft_malloc_atomic(PATH_MAX);
     kft_fd_to_path(fd, filename_new, PATH_MAX);
-    filename = (char *)kft_realloc(filename_new, strlen(filename) + 1);
+    filename = (char *)kft_realloc(filename_new, strlen(filename_new) + 1);
     mode |= KFT_OUTPUT_MODE_MALLOC_FILENAME;
   }
   kft_output_t *po = (kft_output_t *)kft_malloc(sizeof(kft_output_t));

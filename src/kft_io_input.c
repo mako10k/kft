@@ -94,7 +94,7 @@ kft_input_t *kft_input_new(FILE *fp, const char *filename, kft_ispec_t ispec) {
     assert(fd >= 0);
     char *filename_new = (char *)kft_malloc_atomic(PATH_MAX);
     kft_fd_to_path(fd, filename_new, PATH_MAX);
-    filename = (char *)kft_realloc(filename_new, strlen(filename) + 1);
+    filename = (char *)kft_realloc(filename_new, strlen(filename_new) + 1);
     mode |= KFT_INPUT_MODE_MALLOC_FILENAME;
   }
 
