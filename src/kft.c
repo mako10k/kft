@@ -1,10 +1,12 @@
 #include "kft.h"
+#include "kft_error.h"
 #include "kft_io.h"
 #include "kft_io_input.h"
 #include "kft_io_itags.h"
 #include "kft_io_output.h"
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <pthread.h>
@@ -12,13 +14,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/signalfd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <wordexp.h>
 
-#define KFT_PFL_COMMENT 1
-#define KFT_PFL_RETURN_ON_EOL 2
+#define KFT_PFL_RAW 1
+#define KFT_PFL_COMMENT 2
+#define KFT_PFL_RETURN_ON_EOL 4
 
 typedef struct kft_context {
   kft_input_t *pi;
@@ -259,52 +263,52 @@ static inline int kft_exec(kft_input_t *pi, kft_output_t *po, int flags,
   close(pipefds[3]);
 
   /////////////////////////////////
-  // PARENT PROCESS (WRITE TO CHILD)
+  // PARENT PROCESS
+  //
+  // STDIN      -> pipefds[1]
+  // pipefds[2] -> STDOUT
   /////////////////////////////////
-  FILE *ofp_pipe = fdopen(pipefds[1], "w");
-  if (ofp_pipe == NULL) {
+  FILE *ifp_fromchild = fdopen(pipefds[2], "r");
+  if (ifp_fromchild == NULL) {
     return KFT_FAILURE;
   }
-  char filename[strlen(file) + 2];
-  snprintf(filename, sizeof(filename), "|%s", file);
-  kft_output_t *po_pipe = kft_output_new(ofp_pipe, filename);
-  kft_context_t ctx;
-  ctx.pi = pi;
-  ctx.po = po_pipe;
-  ctx.flags = flags;
 
-  pthread_t thread;
-  int ret = pthread_create(&thread, NULL, kft_pump_run, (void *)&ctx);
+  FILE *ofp_tochild = fdopen(pipefds[1], "w");
+  if (ofp_tochild == NULL) {
+    return KFT_FAILURE;
+  }
+  setbuf(ofp_tochild, NULL);
+
+  kft_context_t ctx_fromchild;
+  ctx_fromchild.pi = kft_input_new(ifp_fromchild, NULL, kft_input_get_spec(pi));
+  ctx_fromchild.po = po;
+  ctx_fromchild.flags = flags | KFT_PFL_RAW;
+
+  kft_context_t ctx_tochild;
+  ctx_tochild.pi = pi;
+  ctx_tochild.po = kft_output_new(ofp_tochild, NULL);
+  ctx_tochild.flags = flags;
+
+  pthread_t tid_fromchild;
+  int ret = pthread_create(&tid_fromchild, NULL, kft_pump_run,
+                           (void *)&ctx_fromchild);
   if (ret != 0) {
     return KFT_FAILURE;
   }
 
-  /////////////////////////////////
-  // PARENT PROCESS (READ FROM CHILD)
-  /////////////////////////////////
-  while (1) {
-    char buf[sysconf(_SC_PAGESIZE)];
-    ssize_t len = read(pipefds[2], buf, sizeof(buf));
-    if (len == -1) {
-      return KFT_FAILURE;
-    }
-    if (len == 0) {
-      break;
-    }
-    size_t ret = kft_write(buf, 1, len, po);
-    if (ret < (size_t)len) {
-      return KFT_FAILURE;
-    }
-  }
-  close(pipefds[2]);
-  void *retp;
-  int ret2 = pthread_join(thread, &retp);
-  if (ret2 != 0) {
+  pthread_t tid_tochild;
+  ret = pthread_create(&tid_tochild, NULL, kft_pump_run, (void *)&ctx_tochild);
+  if (ret != 0) {
     return KFT_FAILURE;
   }
-  if ((int)(intptr_t)retp != KFT_SUCCESS) {
-    return KFT_FAILURE;
-  }
+
+  intptr_t ret_fromchild;
+  pthread_join(tid_fromchild, (void **)&ret_fromchild);
+  kft_input_delete(ctx_fromchild.pi);
+#ifdef DEBUG
+  fprintf(stderr, "ret_fromchild: %d\n", (int)ret_fromchild);
+#endif
+
   int retcode = -1;
   while (1) {
     int status;
@@ -326,6 +330,33 @@ static inline int kft_exec(kft_input_t *pi, kft_output_t *po, int flags,
       }
     }
   }
+#ifdef DEBUG
+  fprintf(stderr, "retcode: %d\n", retcode);
+#endif
+
+  intptr_t ret_tochild;
+  int err = pthread_tryjoin_np(tid_tochild, (void **)&ret_tochild);
+  if (err != 0) {
+    if (err == EBUSY) {
+#ifdef DEBUG
+      fprintf(stderr, "pthread_cancel(tid_tochild)\n");
+#endif
+      pthread_cancel(tid_tochild);
+      pthread_join(tid_tochild, (void **)&ret_tochild);
+#ifdef DEBUG
+      fprintf(stderr, "ret_tochild: %d\n", (int)ret_tochild);
+#endif
+      kft_output_delete(ctx_tochild.po);
+    } else {
+      kft_error("pthread_tryjoin_np: %s\n", strerror(err));
+    }
+  }
+#ifdef DEBUG
+  else {
+    fprintf(stderr, "ret_tochild: %d\n", (int)ret_tochild);
+  }
+#endif
+
   if (retcode == -1) {
     return 127;
   }
@@ -486,8 +517,15 @@ static int kft_run_start(kft_input_t *pi, kft_output_t *po, int flags) {
 }
 
 static inline int kft_run(kft_input_t *pi, kft_output_t *po, int flags) {
+  bool is_raw = (flags & KFT_PFL_RAW) != 0;
   bool return_on_eol = (flags & KFT_PFL_RETURN_ON_EOL) != 0;
   bool is_comment = (flags & KFT_PFL_COMMENT) != 0;
+
+  kft_ispec_t ispec = kft_input_get_spec(pi);
+  const char *delim_st = kft_ispec_get_delim_st(ispec);
+  size_t delim_st_len = strlen(delim_st);
+  const char *delim_en = kft_ispec_get_delim_en(ispec);
+  size_t delim_en_len = strlen(delim_en);
 
   while (1) {
 
@@ -497,15 +535,29 @@ static inline int kft_run(kft_input_t *pi, kft_output_t *po, int flags) {
     case EOF:
       return KFT_SUCCESS;
 
-    case KFT_CH_BEGIN: {
-      int ret = kft_run_start(pi, po, flags);
-      if (ret != KFT_SUCCESS) {
-        return ret;
+    case KFT_CH_BEGIN:
+      if (is_raw) {
+        size_t sz = kft_write(delim_st, 1, delim_st_len, po);
+        if (sz < delim_st_len) {
+          return KFT_FAILURE;
+        }
+      } else {
+        int ret = kft_run_start(pi, po, flags);
+        if (ret != KFT_SUCCESS) {
+          return ret;
+        }
       }
       continue;
-    }
     case KFT_CH_END:
-      return KFT_SUCCESS;
+      if (is_raw) {
+        size_t sz = kft_write(delim_en, 1, delim_en_len, po);
+        if (sz < delim_en_len) {
+          return KFT_FAILURE;
+        }
+        continue;
+      } else {
+        return KFT_SUCCESS;
+      }
 
     case KFT_CH_EOL:
       if (return_on_eol) {
