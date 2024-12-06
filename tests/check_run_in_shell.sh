@@ -4,8 +4,8 @@
 
 TEXT="hello world"
 
-TESTMSG="kft -e \"$TEXT\""
-RESULT="$(timeout 1 kft -e "$TEXT")"
+TESTMSG="kft -e \"{{!echo '$TEXT'}}\""
+RESULT="$(timeout 1 kft -e "{{!echo '$TEXT'}}")"
 if [ "$RESULT" != "$TEXT" ]; then
     echo "Expected '$TEXT', got '$RESULT'"
     exit 1
