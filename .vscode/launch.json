@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "program": "${workspaceFolder}/src/kft",
-            "args": ["test/input.kft"],
+            "args": ["-e", "{{!echo 'Hello, World!'}}"],
             "cwd": "${workspaceFolder}",
             "setupCommands": [
                 {
