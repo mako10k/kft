@@ -24,7 +24,8 @@
 			"extensions": [
 				"ms-vscode.cpptools",
 				"llvm-vs-code-extensions.vscode-clangd",
-				"ms-vscode.makefile-tools"
+				"ms-vscode.makefile-tools",
+				"github.vscode-github-actions"
 			]
 		}
 	}
