@@ -18,8 +18,8 @@
                     "ignoreFailures": true
                 },
                 {
-                    "description": "Set follow-fork-mode to child",
-                    "text": "-gdb-set follow-fork-mode child",
+                    "description": "Set follow-fork-mode to parent",
+                    "text": "-gdb-set follow-fork-mode parent",
                     "ignoreFailures": true
                 }/*,
                 {

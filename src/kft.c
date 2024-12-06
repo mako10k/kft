@@ -184,26 +184,32 @@ static inline int ktf_run_read(kft_input_t *pi, kft_output_t *po, int flags) {
 static inline void *kft_pump_run(void *data) {
   kft_context_t *ctx = data;
   int ret = kft_run(ctx->pi, ctx->po, ctx->flags);
-  kft_output_delete(ctx->po);
   if (ret != KFT_SUCCESS) {
     return (void *)(intptr_t)KFT_FAILURE;
   }
   return (void *)(intptr_t)KFT_SUCCESS;
 }
 
+#define KFT_EFL_PIPEIN_NONE 0
+#define KFT_EFL_PIPEIN_STDIN 1
+#define KFT_EFL_PIPEIN_ARG 2
+
 static inline int kft_exec(kft_input_t *pi, kft_output_t *po, int flags,
-                           const char *file, char *argv[], int input_by_arg) {
+                           const char *file, char *argv[], int eflags) {
   // DEFAULT STREAM
   int pipefds[4];
-  // pipefds[0] : read  of (  parent -> child  *)
-  // pipefds[1] : write of (* parent -> child   )
-  // pipefds[2] : read  of (  child  -> parent *)
-  // pipefds[3] : write of (* child  -> parent  )
+  // pipefds[0] : read  of (  child  -> parent *)
+  // pipefds[1] : write of (* child  -> parent  )
+  // --- use follows only when eflags != KFT_EFL_PIPEIN_NONE ---
+  // pipefds[2] : read  of (  parent -> child  *)
+  // pipefds[3] : write of (* parent -> child   )
   if (pipe(pipefds) == -1) {
     return KFT_FAILURE;
   }
-  if (pipe(pipefds + 2) == -1) {
-    return KFT_FAILURE;
+  if (eflags != KFT_EFL_PIPEIN_NONE) {
+    if (pipe(pipefds + 2) == -1) {
+      return KFT_FAILURE;
+    }
   }
   pid_t pid = fork();
   if (pid == -1) {
@@ -214,26 +220,36 @@ static inline int kft_exec(kft_input_t *pi, kft_output_t *po, int flags,
   // CHILD PROCESS
   /////////////////////////////////
   if (pid == 0) {
-    // pipefds[0] : read  of (  parent -> child  *) -> STDIN_FILENO
-    // pipefds[1] : write of (* parent -> child   ) -> close
-    // pipefds[2] : read  of (  child  -> parent *) -> close
-    // pipefds[3] : write of (* child  -> parent  ) -> STDOUT_FILENO
+    // pipefds[0] : read  of (  child  -> parent *) -> close
+    // pipefds[1] : write of (* child  -> parent  ) -> STDOUT_FILENO
+    // --- use follows only when eflags == KFT_EFL_PIPEIN_STDIN ---
+    // pipefds[2] : read  of (  parent -> child  *) -> STDIN_FILENO
+    // pipefds[3] : write of (* parent -> child   ) -> close
+    // --- use follows only when eflags == KFT_EFL_PIPEIN_ARG ---
+    // pipefds[2] : read  of (  parent -> child  *) -> last argument
+    // pipefds[3] : write of (* parent -> child   ) -> close
+
     char path_fd[strlen("/dev/fd/2147483647") + 1];
-    if (input_by_arg) {
-      snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", pipefds[0]);
-    } else if (pipefds[0] != STDIN_FILENO) {
-      dup2(pipefds[0], STDIN_FILENO);
-      close(pipefds[0]);
-    }
-    close(pipefds[1]);
-    close(pipefds[2]);
-    if (pipefds[3] != STDOUT_FILENO) {
-      dup2(pipefds[3], STDOUT_FILENO);
-      close(pipefds[3]);
+
+    close(pipefds[0]);
+    if (pipefds[1] != STDOUT_FILENO) {
+      dup2(pipefds[1], STDOUT_FILENO);
+      close(pipefds[1]);
     }
 
-    // execute command
-    if (input_by_arg) {
+    switch (eflags) {
+
+    case KFT_EFL_PIPEIN_STDIN:
+      if (pipefds[2] != STDIN_FILENO) {
+        dup2(pipefds[2], STDIN_FILENO);
+        close(pipefds[2]);
+      }
+      close(pipefds[3]);
+      break;
+
+    case KFT_EFL_PIPEIN_ARG: {
+      snprintf(path_fd, sizeof(path_fd), "/dev/fd/%d", pipefds[2]);
+      close(pipefds[3]);
       int argc = 0;
       while (argv[argc] != NULL)
         argc++;
@@ -244,6 +260,7 @@ static inline int kft_exec(kft_input_t *pi, kft_output_t *po, int flags,
       argv_[argc] = path_fd;
       argv_[argc + 1] = 0;
       argv = argv_;
+    } break;
     }
 
     execvp(file, argv);
@@ -255,59 +272,55 @@ static inline int kft_exec(kft_input_t *pi, kft_output_t *po, int flags,
   // PARENT PROCESS
   /////////////////////////////////
 
-  // pipefds[0] : read  of (  parent -> child  *) -> close
-  // pipefds[1] : write of (* parent -> child   ) -> write output to child
-  // pipefds[2] : read  of (  child  -> parent *) -> read output from child
-  // pipefds[3] : write of (* child  -> parent  ) -> close
-  close(pipefds[0]);
-  close(pipefds[3]);
+  // pipefds[0] : read  of (  child  -> parent *) -> read output from child
+  // pipefds[1] : write of (* child  -> parent  ) -> close
+  // --- use follows only when eflags != KFT_EFL_PIPEIN_NONE ---
+  // pipefds[2] : read  of (  parent -> child  *) -> close
+  // pipefds[3] : write of (* parent -> child   ) -> write output to child
 
-  /////////////////////////////////
-  // PARENT PROCESS
-  //
-  // STDIN      -> pipefds[1]
-  // pipefds[2] -> STDOUT
-  /////////////////////////////////
-  FILE *ifp_fromchild = fdopen(pipefds[2], "r");
+  // ------------------------------
+  // CHILD -> PARENT
+  // ------------------------------
+  FILE *ifp_fromchild = fdopen(pipefds[0], "r");
   if (ifp_fromchild == NULL) {
     return KFT_FAILURE;
   }
 
-  FILE *ofp_tochild = fdopen(pipefds[1], "w");
-  if (ofp_tochild == NULL) {
-    return KFT_FAILURE;
-  }
-  setbuf(ofp_tochild, NULL);
-
-  kft_context_t ctx_fromchild;
-  ctx_fromchild.pi = kft_input_new(ifp_fromchild, NULL, kft_input_get_spec(pi));
-  ctx_fromchild.po = po;
-  ctx_fromchild.flags = flags | KFT_PFL_RAW;
-
-  kft_context_t ctx_tochild;
-  ctx_tochild.pi = pi;
-  ctx_tochild.po = kft_output_new(ofp_tochild, NULL);
-  ctx_tochild.flags = flags;
+  kft_input_t *pi_fromchild =
+      kft_input_new(ifp_fromchild, NULL, kft_input_get_spec(pi));
 
   pthread_t tid_fromchild;
-  int ret = pthread_create(&tid_fromchild, NULL, kft_pump_run,
-                           (void *)&ctx_fromchild);
-  if (ret != 0) {
-    return KFT_FAILURE;
-  }
+  {
+    kft_context_t ctx_fromchild;
+    ctx_fromchild.pi = pi_fromchild;
+    ctx_fromchild.po = po;
+    ctx_fromchild.flags = flags | KFT_PFL_RAW;
 
-  pthread_t tid_tochild;
-  ret = pthread_create(&tid_tochild, NULL, kft_pump_run, (void *)&ctx_tochild);
-  if (ret != 0) {
-    return KFT_FAILURE;
+    int ret = pthread_create(&tid_fromchild, NULL, kft_pump_run,
+                             (void *)&ctx_fromchild);
+    if (ret != 0) {
+      return KFT_FAILURE;
+    }
   }
+  close(pipefds[1]);
+  // ------------------------------
+  // PARENT -> CHILD
+  // ------------------------------
+  if (eflags != KFT_EFL_PIPEIN_NONE) {
+    close(pipefds[2]);
+    FILE *ofp_tochild = fdopen(pipefds[3], "w");
+    if (ofp_tochild == NULL) {
+      return KFT_FAILURE;
+    }
 
-  intptr_t ret_fromchild;
-  pthread_join(tid_fromchild, (void **)&ret_fromchild);
-  kft_input_delete(ctx_fromchild.pi);
-#ifdef DEBUG
-  fprintf(stderr, "ret_fromchild: %d\n", (int)ret_fromchild);
-#endif
+    kft_output_t *po = kft_output_new(ofp_tochild, NULL);
+    int ret = kft_run(pi, po, flags);
+    kft_output_delete(po);
+    fclose(ofp_tochild);
+    if (ret != KFT_SUCCESS) {
+      return KFT_FAILURE;
+    }
+  }
 
   int retcode = -1;
   while (1) {
@@ -334,27 +347,12 @@ static inline int kft_exec(kft_input_t *pi, kft_output_t *po, int flags,
   fprintf(stderr, "retcode: %d\n", retcode);
 #endif
 
-  intptr_t ret_tochild;
-  int err = pthread_tryjoin_np(tid_tochild, (void **)&ret_tochild);
-  if (err != 0) {
-    if (err == EBUSY) {
+  intptr_t ret_fromchild;
+  pthread_join(tid_fromchild, (void **)&ret_fromchild);
+  kft_input_delete(pi_fromchild);
+  fclose(ifp_fromchild);
 #ifdef DEBUG
-      fprintf(stderr, "pthread_cancel(tid_tochild)\n");
-#endif
-      pthread_cancel(tid_tochild);
-      pthread_join(tid_tochild, (void **)&ret_tochild);
-#ifdef DEBUG
-      fprintf(stderr, "ret_tochild: %d\n", (int)ret_tochild);
-#endif
-      kft_output_delete(ctx_tochild.po);
-    } else {
-      kft_error("pthread_tryjoin_np: %s\n", strerror(err));
-    }
-  }
-#ifdef DEBUG
-  else {
-    fprintf(stderr, "ret_tochild: %d\n", (int)ret_tochild);
-  }
+  fprintf(stderr, "ret_fromchild: %d\n", (int)ret_fromchild);
 #endif
 
   if (retcode == -1) {
@@ -372,24 +370,20 @@ static inline int kft_run_shell(kft_input_t *pi, kft_output_t *po, int flags) {
     shell = KFT_OPTDEF_SHELL;
   }
   char *argv[] = {shell, NULL};
-  return kft_exec(pi, po, flags, shell, argv, 0);
+  return kft_exec(pi, po, flags, shell, argv, KFT_EFL_PIPEIN_ARG);
 }
 
 static inline int kft_exec_inline(kft_ispec_t ispec, kft_output_t *po,
                                   int flags, char *file, char *argv[]) {
-  FILE *fp_in = stdin;
-  char filename_in[PATH_MAX] = "/dev/fd/0";
-  int fd_in = fileno(fp_in);
-  kft_fd_to_path(fd_in, filename_in, sizeof(filename_in));
-  kft_input_t *pi = kft_input_new(fp_in, filename_in, ispec);
-  int ret = kft_exec(pi, po, flags, file, argv, 0);
+  kft_input_t *pi = kft_input_new(stdin, NULL, ispec);
+  int ret = kft_exec(pi, po, flags, file, argv, KFT_EFL_PIPEIN_NONE);
   kft_input_delete(pi);
   return ret;
 }
 
 static inline int kft_run_hash(kft_input_t *pi, kft_output_t *po, int flags) {
   kft_output_t *po_linebuf = kft_output_new_mem();
-  int ret = kft_run(pi, po_linebuf, flags);
+  int ret = kft_run(pi, po_linebuf, flags | KFT_PFL_RETURN_ON_EOL);
   if (ret == KFT_FAILURE) {
     kft_output_delete(po_linebuf);
     return KFT_FAILURE;
@@ -411,7 +405,8 @@ static inline int kft_run_hash(kft_input_t *pi, kft_output_t *po, int flags) {
     wordfree(&p);
     return ret;
   }
-  int ret3 = kft_exec(pi, po, flags, p.we_wordv[0], p.we_wordv, like_shebang);
+  int ret3 = kft_exec(pi, po, flags, p.we_wordv[0], p.we_wordv,
+                      like_shebang ? KFT_EFL_PIPEIN_ARG : KFT_EFL_PIPEIN_STDIN);
   wordfree(&p);
   return ret3;
 }
@@ -575,7 +570,7 @@ static inline int kft_run(kft_input_t *pi, kft_output_t *po, int flags) {
       if (ret == EOF) {
         return KFT_FAILURE;
       }
-    } else if (KFT_CH_EOL) {
+    } else if (ch == KFT_CH_EOL) {
       int ret = kft_fputc('\n', po);
       if (ret == EOF) {
         return KFT_FAILURE;
@@ -767,16 +762,12 @@ int main(int argc, char *argv[]) {
 
   for (int i = optind; i < argc; i++) {
     char *file = argv[i];
-    FILE *fp = NULL;
-    char *filename = NULL;
+    kft_input_t *pi;
     if (strcmp(file, "-") == 0) {
-      fp = stdin;
-      filename = NULL;
+      pi = kft_input_new(stdin, NULL, is);
     } else {
-      fp = NULL;
-      filename = file;
+      pi = kft_input_new_open(file, is);
     }
-    kft_input_t *pi = kft_input_new(fp, filename, is);
 
     int ret = kft_run(pi, po, 0);
     kft_input_delete(pi);
