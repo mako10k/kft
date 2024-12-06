@@ -10,5 +10,5 @@ sudo chown -R $user:$group "$(dirname "$0")"
 
 autoreconf -fiv
 ./configure --enable-debug
-make clean all
+make clean all check
 sudo make install
