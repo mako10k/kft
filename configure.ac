@@ -55,6 +55,6 @@ AC_CHECK_FUNCS([setenv])
 AC_CHECK_FUNCS([strchr])
 AC_SEARCH_LIBS([pow], [m])
 
-AC_CONFIG_FILES([Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile tests/Makefile])
 
 AC_OUTPUT

@@ -4,6 +4,7 @@ Makefile
 Makefile.in
 /aclocal.m4
 *.log
+*.trs
 *.tar.gz
 *.tar.bz2
 /compile
@@ -16,6 +17,7 @@ Makefile.in
 /install-sh
 /missing
 /stamp-h1
+/test-driver
 
 src/kft
 

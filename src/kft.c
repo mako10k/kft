@@ -702,12 +702,11 @@ int main(int argc, char *argv[]) {
       if (err != 0) {
         return EXIT_FAILURE;
       }
-      continue;
-    }
-
-    int err = setenv(name, value, 1);
-    if (err != 0) {
-      return EXIT_FAILURE;
+    } else {
+      int err = setenv(name, value, 1);
+      if (err != 0) {
+        return EXIT_FAILURE;
+      }
     }
     optind++;
   }
