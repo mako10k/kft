@@ -1,7 +1,9 @@
 #!/bin/sh
-set -e
+
+. "$(dirname "$0")/helpers.sh"
+
 TEXT="hello world"
-RESULT="$(timeout 10 kft -e "$TEXT" -e "$TEXT")"
+RESULT="$(timeout 1 kft -e "$TEXT" -e "$TEXT")"
 if [ "$RESULT" != "$TEXT$TEXT" ]; then
     echo "Expected '$TEXT$TEXT', got '$RESULT'"
     exit 1
