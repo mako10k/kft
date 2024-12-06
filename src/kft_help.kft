@@ -32,8 +32,8 @@ Options:
   -s, --shell=STRING    use shell STRING [$KFT_SHELL, $SHELL or /bin/sh]
   -o, --output=FILE     write to FILE [stdout]
   -E, --escape=CHAR     escape character [$KFT_ESCAPE or \]
-  -S, --start=STRING    start delimiter [$KFT_BEGIN or \{{$KFT_BEGIN\}}]
-  -R, --end=STRING      end delimite [$KFT_END or \{{$KFT_END\}}]
+  -S, --start=STRING    start delimiter [$KFT_BEGIN or \{{]
+  -R, --end=STRING      end delimite [$KFT_END or \}}]
   -h, --help            display this help and exit
   -v, --version         output version information and exit
 
