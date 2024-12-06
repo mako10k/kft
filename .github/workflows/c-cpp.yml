@@ -25,3 +25,10 @@ jobs:
       run: make check
     - name: make install
       run: sudo make install
+    - name: merge develop if current branch is workflow
+      run: |
+        if [ ${{ github.ref }} == 'refs/heads/workflow' ]; then
+          git checkout develop
+          git merge workflow
+          git push origin develop
+        fi
