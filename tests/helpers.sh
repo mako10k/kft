@@ -13,3 +13,13 @@ timeout_detector() {
 }
 trap timeout_detector EXIT
 
+run_expect() {
+    EXPECT="$1"
+    shift
+    TESTMSG="$*"
+    RESULT="$(timeout 1 "$@")"
+    if [ "$RESULT" != "$EXPECT" ]; then
+        echo "Expected '$EXPECT', got '$RESULT'"
+        exit 1
+    fi
+}

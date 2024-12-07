@@ -42,6 +42,5 @@ run() {
     fi
 }
 
-
 run
 run < /dev/null
