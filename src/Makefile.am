@@ -23,6 +23,27 @@ kft_SOURCES = \
   kft_prog_parse.c \
   kft_prog.c
 
+noinst_HEADERS = \
+  kft.h \
+  kft_error.h \
+  kft_io.h \
+  kft_io_input.h \
+  kft_io_ispec.h \
+  kft_io_itags.h \
+  kft_io_output.h \
+  kft_malloc.h \
+  kft_misc.h \
+  kft_memstream.h \
+  kft_prog_parse_char.h \
+  kft_prog_parse_float.h \
+  kft_prog_parse_int.h \
+  kft_prog_parse_numeric.h \
+  kft_prog_parse_object.h \
+  kft_prog_parse_string.h \
+  kft_prog_parse_symbol.h \
+  kft_prog_parse.h \
+  kft_prog.h
+
 kft_LDADD = @GC_LIBS@
 kft_CFLAGS = @GC_CFLAGS@
 

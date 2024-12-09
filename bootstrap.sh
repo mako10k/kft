@@ -1,13 +1,33 @@
 #!/bin/bash
 
+set -e
+
+# ------------------------------
+# VARIABLES
+# ------------------------------
 basedir="$(dirname "$0")"
-user=$(id -nu)
-group=$(id -ng)
+owner_expect="$(id -nu):$(id -ng)"
 
-set -ex
+# ------------------------------
+# RESET ENVIRONMENT
+# ------------------------------
+if [ -f "$basedir/Makefile" ]; then
+    make distclean || true
+fi
 
-sudo chown -R $user:$group "$basedir"
+# ------------------------------
+# REPAIRE OWNER
+# ------------------------------
+find "$basedir" | while read f; do
+    owner_actual="$(stat -c'%U:%G' "$f")"
+    if [ "$owner_expect" != "$owner_actual" ]; then
+        sudo chown "$owner_expect" "$f"
+    fi
+done
 
+# ------------------------------
+# CHANGE COMPILER
+# ------------------------------
 if [ -z "${CC}" ]; then
     if clang -v > /dev/null 2>&1; then
         CC=clang
@@ -16,11 +36,32 @@ if [ -z "${CC}" ]; then
     fi
 fi
 
-if [ -f "$basedir/Makefile" ]; then
-    make distclean || true
-fi
+# ------------------------------
+# ENABLE command output
+# ------------------------------
+set -x
 
+# ------------------------------
+# GENERATE configure
+# ------------------------------
 autoreconf -fiv
-./configure CC="$CC" --enable-debug
-make clean all check
+
+# ------------------------------
+# CONFIGURE 'Makefile's
+# ------------------------------
+./configure CC="$CC"
+
+# ------------------------------
+# BUILD
+# ------------------------------
+make all
+
+# ------------------------------
+# TEST
+# ------------------------------
+make check
+
+# ------------------------------
+# INSTALL
+# ------------------------------
 sudo make install
