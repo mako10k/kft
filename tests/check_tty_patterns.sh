@@ -12,8 +12,11 @@ if ! tty > /dev/null; then
         exit 77
     fi
     echo "running in a pty, re-executing in a new terminal"
-    "$ptyterm" "$@"
-    exit $?
+    if "$ptyterm" "$@"; then
+        exit 0
+    fi
+    echo "Trying to run in a new terminal failed"
+    exit 77
 fi
 
 run() {
