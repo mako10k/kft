@@ -6,6 +6,7 @@ set -e
 TEXT="hello world"
 
 if ! tty > /dev/null; then
+    set +e
     ptyterm="$(which ptyterm)"
     if [ $? -ne 0 ]; then
         echo "Skipping test, not running in a tty"
