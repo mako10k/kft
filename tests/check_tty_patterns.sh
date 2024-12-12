@@ -6,8 +6,14 @@ set -e
 TEXT="hello world"
 
 if ! tty > /dev/null; then
-    echo "Skipping test, not running in a tty"
-    exit 77
+    ptyterm="$(which ptyterm)"
+    if [ $? -ne 0 ]; then
+        echo "Skipping test, not running in a tty"
+        exit 77
+    fi
+    echo "running in a pty, re-executing in a new terminal"
+    "$ptyterm" "$@"
+    exit $?
 fi
 
 run() {

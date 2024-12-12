@@ -1,3 +1,6 @@
 [submodule "modules/kwordexp"]
 	path = modules/kwordexp
 	url = https://github.com/mako10k/kwordexp
+[submodule "ptyterm"]
+	path = modules/ptyterm
+	url = https://github.com/mako10k/ptyterm
