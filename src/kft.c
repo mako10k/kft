@@ -1,5 +1,4 @@
 #include "kft.h"
-#include "kft_error.h"
 #include "kft_io.h"
 #include "kft_io_input.h"
 #include "kft_io_itags.h"
@@ -8,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <kwordexp.h>
 #include <limits.h>
 #include <pthread.h>
 #include <search.h>
@@ -18,7 +18,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <wordexp.h>
 
 #define KFT_PFL_RAW 1
 #define KFT_PFL_COMMENT 2
@@ -32,28 +31,53 @@ typedef struct kft_context {
 
 static inline int kft_run(kft_input_t *pi, kft_output_t *po, int flags);
 
-static int kft_run_read_var_input(const char *value, kft_ispec_t ispec,
-                                  kft_output_t *po, int flags) {
+/**
+ * set "INPUT" variable
+ *
+ * @param value value of "INPUT" variable
+ * @param ispec input specification
+ * @param po output
+ * @param flags flags
+ * @return KFT_SUCCESS or KFT_FAILURE
+ */
+static int kft_var_set_input(const char *value, kft_ispec_t ispec,
+                             kft_output_t *po, int flags) {
   kft_input_t *pi = kft_input_new_open(value, ispec);
   int ret = kft_run(pi, po, flags);
   kft_input_delete(pi);
   return ret;
 }
 
-static int kft_run_read_var_output(const char *value, kft_input_t *pi,
-                                   int flags) {
+/**
+ * set "OUTPUT" variable
+ *
+ * @param value value of "OUTPUT" variable
+ * @param pi input
+ * @param flags flags
+ * @return KFT_SUCCESS or KFT_FAILURE
+ */
+static int kft_var_set_output(const char *value, kft_input_t *pi, int flags) {
   kft_output_t *po = kft_output_new_open(value);
   int ret = kft_run(pi, po, flags);
   kft_output_delete(po);
   return ret;
 }
 
-static int kft_run_read_var(const char *name, const char *value,
-                            kft_input_t *pi, kft_output_t *po, int flags) {
+/**
+ * set variable
+ *
+ * @param name name of variable
+ * @param value value of variable
+ * @param pi input
+ * @param po output
+ * @param flags flags
+ */
+static int kft_var_set(const char *name, const char *value, kft_input_t *pi,
+                       kft_output_t *po, int flags) {
   // SPECIAL NAME
   if (strcmp(KFT_VARNAME_INPUT, name) == 0) {
     kft_ispec_t ispec = kft_input_get_spec(pi);
-    int ret = kft_run_read_var_input(value, ispec, po, flags);
+    int ret = kft_var_set_input(value, ispec, po, flags);
     if (ret == KFT_FAILURE) {
       const char *filename = kft_input_get_filename(pi);
       size_t row = kft_input_get_row(pi);
@@ -64,7 +88,7 @@ static int kft_run_read_var(const char *name, const char *value,
     }
     return ret;
   } else if (strcmp(KFT_VARNAME_OUTPUT, name) == 0) {
-    int ret = kft_run_read_var_output(value, pi, flags);
+    int ret = kft_var_set_output(value, pi, flags);
     if (ret == KFT_FAILURE) {
       const char *filename = kft_input_get_filename(pi);
       size_t row = kft_input_get_row(pi);
@@ -82,8 +106,15 @@ static int kft_run_read_var(const char *name, const char *value,
   return KFT_SUCCESS;
 }
 
-static int kft_run_write_var(const char *name, kft_input_t *pi,
-                             kft_output_t *po) {
+/**
+ * get variable
+ *
+ * @param name name of variable
+ * @param pi input
+ * @param po output
+ * @return KFT_SUCCESS or KFT_FAILURE
+ */
+static int kft_var_get(const char *name, kft_input_t *pi, kft_output_t *po) {
   const char *value = NULL;
   // SPECIAL NAME
   if (strcmp(KFT_VARNAME_INPUT, name) == 0) {
@@ -117,7 +148,7 @@ static int ktf_run_var(kft_input_t *pi, kft_output_t *po, int flags) {
     char *value = strchr(name, '=');
     if (value != NULL) {
       *(value++) = '\0';
-      int ret2 = kft_run_read_var(name, value, pi, po, flags);
+      int ret2 = kft_var_set(name, value, pi, po, flags);
       if (ret2 == KFT_FAILURE) {
         const char *filename = kft_input_get_filename(pi);
         size_t row = kft_input_get_row(pi);
@@ -128,7 +159,7 @@ static int ktf_run_var(kft_input_t *pi, kft_output_t *po, int flags) {
         break;
       }
     } else {
-      int ret2 = kft_run_write_var(name, pi, po);
+      int ret2 = kft_var_get(name, pi, po);
       if (ret2 == KFT_FAILURE) {
         const char *filename = kft_input_get_filename(pi);
         size_t row = kft_input_get_row(pi);
@@ -393,21 +424,23 @@ static inline int kft_run_hash(kft_input_t *pi, kft_output_t *po, int flags) {
 
   int like_shebang = *linebuf == '!';
   const char *words = like_shebang ? linebuf + 1 : linebuf;
-  wordexp_t p;
-  int ret2 = wordexp(words, &p, 0);
+  kwordexp_t p;
+  char *argv[] = {NULL};
+  kwordexp_init(&p, argv, 0);
+  int ret2 = kwordexp(words, &p, 0);
   free(linebuf);
   if (ret2 != KFT_SUCCESS) {
     return KFT_FAILURE;
   }
   if (ret != KFT_EOL) {
     kft_ispec_t ispec = kft_input_get_spec(pi);
-    int ret = kft_exec_inline(ispec, po, flags, p.we_wordv[0], p.we_wordv);
-    wordfree(&p);
+    int ret = kft_exec_inline(ispec, po, flags, p.kwe_wordv[0], p.kwe_wordv);
+    kwordfree(&p);
     return ret;
   }
-  int ret3 = kft_exec(pi, po, flags, p.we_wordv[0], p.we_wordv,
+  int ret3 = kft_exec(pi, po, flags, p.kwe_wordv[0], p.kwe_wordv,
                       like_shebang ? KFT_EFL_PIPEIN_ARG : KFT_EFL_PIPEIN_STDIN);
-  wordfree(&p);
+  kwordfree(&p);
   return ret3;
 }
 

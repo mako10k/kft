@@ -44,11 +44,17 @@ noinst_HEADERS = \
   kft_prog_parse.h \
   kft_prog.h
 
-kft_LDADD = @GC_LIBS@
-kft_CFLAGS = @GC_CFLAGS@
+DEBUG_CFLAGS = @DEBUG_CFLAGS@
+
+kft_CFLAGS = @GC_CFLAGS@ @KWORDEXP_CFLAGS@
+kft_CFLAGS += -DDATADIR="\"$(datadir)\""
+kft_CFLAGS += -Wall -Wextra -Werror
+kft_CFLAGS += -flto
+kft_CFLAGS += $(DEBUG_CFLAGS)
+
+kft_LDFLAGS = -flto
+
+kft_LDADD = @GC_LIBS@ @KWORDEXP_LIBS@
 
 data_DATA = kft_help.kft
 
-DEBUG_CFLAGS = @DEBUG_CFLAGS@
-CFLAGS = -Wall -Wextra -Werror -flto $(DEBUG_CFLAGS)
-AM_CFLAGS = -DDATADIR="$(datadir)"

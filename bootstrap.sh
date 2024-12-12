@@ -42,6 +42,12 @@ fi
 set -x
 
 # ------------------------------
+# BUILD SUBMODULES
+# ------------------------------
+git submodule update --init --recursive
+git submodule foreach ./bootstrap.sh
+
+# ------------------------------
 # GENERATE configure
 # ------------------------------
 autoreconf -fiv

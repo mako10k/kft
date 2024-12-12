@@ -17,6 +17,7 @@ AM_INIT_AUTOMAKE([foreign])
 
 # Checks for libraries.
 PKG_CHECK_MODULES(GC, [bdw-gc])
+PKG_CHECK_MODULES(KWORDEXP, [kwordexp])
 
 # Checks for header files.
 AC_CHECK_HEADERS([unistd.h])

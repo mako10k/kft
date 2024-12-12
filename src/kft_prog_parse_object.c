@@ -3,7 +3,7 @@
 #include "kft_prog_parse_symbol.h"
 
 int kft_parse_object(kft_parse_context_t *ppc, size_t *pnaccepted,
-                     kft_object_t *pobject) {
+                     kft_object_t **pobject) {
   size_t naccepted = *pnaccepted;
 
   kft_symbol_t symbol;
@@ -24,7 +24,8 @@ int kft_parse_object(kft_parse_context_t *ppc, size_t *pnaccepted,
     fields[nfields] = &expr;
   }
 
-  *pobject =
+  *pobject = (kft_object_t *)kft_malloc(sizeof(kft_object_t));
+  **pobject =
       (kft_object_t){.symbol = symbol, .fields = fields, .nfields = nfields};
 
   *pnaccepted = naccepted;

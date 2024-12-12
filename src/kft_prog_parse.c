@@ -1,5 +1,8 @@
 #include "kft_prog_parse.h"
+#include "kft_prog_parse_float.h"
 #include "kft_prog_parse_int.h"
+#include "kft_prog_parse_object.h"
+#include "kft_prog_parse_string.h"
 #include <ctype.h>
 
 int kft_fetch(kft_parse_context_t *ppc) {
@@ -30,10 +33,35 @@ int kft_parse_expr(kft_parse_context_t *ppc, size_t *pnaccepted,
   size_t naccepted = *pnaccepted;
 
   kft_expr_t expr;
+  int ret;
 
-  int ret = kft_parse_int(ppc, &naccepted, &expr.val.int_val);
+  ret = kft_parse_object(ppc, &naccepted, &expr.val.object_val);
+  if (ret == KFT_PARSE_OK) {
+    pexpr->type = KFT_EXPR_OBJECT;
+
+    *pnaccepted = naccepted;
+    return KFT_PARSE_OK;
+  }
+
+  ret = kft_parse_float(ppc, &naccepted, &expr.val.float_val);
+  if (ret == KFT_PARSE_OK) {
+    pexpr->type = KFT_EXPR_FLOAT;
+
+    *pnaccepted = naccepted;
+    return KFT_PARSE_OK;
+  }
+
+  ret = kft_parse_int(ppc, &naccepted, &expr.val.int_val);
   if (ret == KFT_PARSE_OK) {
     pexpr->type = KFT_EXPR_INT;
+
+    *pnaccepted = naccepted;
+    return KFT_PARSE_OK;
+  }
+
+  ret = kft_parse_string(ppc, &naccepted, &expr.val.string_val);
+  if (ret == KFT_PARSE_OK) {
+    pexpr->type = KFT_EXPR_STRING;
 
     *pnaccepted = naccepted;
     return KFT_PARSE_OK;
