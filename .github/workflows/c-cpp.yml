@@ -20,7 +20,11 @@ jobs:
     - name: update submodules
       run: git submodule update --init --recursive
     - name: build submodules
-      run: git submodule foreach ./bootstrap.sh
+      run: |
+        git submodule foreach autoreconf -iv
+        git submodule foreach ./configure
+        git submodule foreach make
+        git submodule foreach sudo make install
     - name: autoreconf
       run: autoreconf -i
     - name: configure
