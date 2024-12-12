@@ -17,6 +17,10 @@ jobs:
         fetch-depth: 0
     - name: Install dependencies
       run: sudo apt-get install -y clang autoconf automake libgc-dev
+    - name: update submodules
+      run: git submodule update --init --recursive
+    - name: build submodules
+      run: git submodule foreach ./bootstrap.sh
     - name: autoreconf
       run: autoreconf -i
     - name: configure
